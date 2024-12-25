@@ -10,14 +10,14 @@ homepage = "https://github.com/paul-nameless/tg"
 repository = "https://github.com/paul-nameless/tg"
 
 [tool.poetry.dependencies]
-python = "^3.8"
-python-telegram = "0.15.0"
+python = "^3.12"
+python-telegram = "^0.19.0"
 
 [tool.poetry.dev-dependencies]
-black = "20.8b1"
-flake8 = "3.8.4"
-isort = "5.6.2"
-mypy = "0.812"
+black = "^24.10.0"
+flake8 = "^7.1.1"
+isort = "^5.13.2"
+mypy = "^1.14.0"
 
 [tool.poetry.scripts]
 tg = "tg.__main__:main"

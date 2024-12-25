@@ -57,6 +57,7 @@ def parse_args() -> None:
 def main() -> None:
     parse_args()
     utils.cleanup_cache()
+    utils.setup_log()
     tg = Tdlib(
         api_id=config.API_ID,
         api_hash=config.API_HASH,
@@ -68,7 +69,6 @@ def main() -> None:
     )
     tg.login()
 
-    utils.setup_log()
     utils.set_shorter_esc_delay()
 
     wrapper(partial(run, tg))

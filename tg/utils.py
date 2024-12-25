@@ -59,7 +59,8 @@ def setup_log() -> None:
         handlers=handlers,
     )
     logging.getLogger().setLevel(config.LOG_LEVEL)
-    sys.stderr = LogWriter(log.error)  # type: ignore
+    #sys.stderr = LogWriter(log.error)  # type: ignore
+    sys.stderr = log.error
     logging.captureWarnings(True)
 
 

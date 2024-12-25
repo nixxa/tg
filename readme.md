@@ -29,7 +29,7 @@ Telegram terminal client.
 
 To use tg, you'll need to have the following installed:
 
-- [Python >= 3.8](https://www.python.org/downloads/)
+- [Python >= 3.12](https://www.python.org/downloads/)
 
 
 ## Optional dependencies
@@ -37,7 +37,7 @@ To use tg, you'll need to have the following installed:
 - [terminal-notifier](https://github.com/julienXX/terminal-notifier) - for Mac (used by default). You can change it to [dunst](https://github.com/dunst-project/dunst) for Linux or any other notifications program (see `NOTIFY_CMD` in configuration)
 - [ffmpeg](https://ffmpeg.org/) - to record voice msgs and upload videos.
 - [tdlib](https://tdlib.github.io/td/build.html?language=Python) - in case of incompatibility with built in package.
-  For example, macOS:
+  For macOS:
   ```sh
   brew install tdlib
   ```
