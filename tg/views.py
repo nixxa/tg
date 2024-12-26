@@ -157,6 +157,8 @@ class StatusView:
 
 
 class ChatView:
+    HEADER_HEIGHT = 2
+
     def __init__(self, stdscr: window, model: Model) -> None:
         self.stdscr = stdscr
         self.h = 0
@@ -203,12 +205,15 @@ class ChatView:
         width = self.w - 1
 
         self.win.vline(0, width, line, self.h)
+        # Draw view title
         self.win.addstr(
             0, 0, title.center(width)[:width], get_color(cyan, -1) | bold
         )
+        # Draw separator
+        self.win.addstr(1, 0, "-" * width, get_color(cyan, -1) | bold)
 
-        for i, chat in enumerate(chats, 1):
-            is_selected = i == current + 1
+        for i, chat in enumerate(chats, ChatView.HEADER_HEIGHT):
+            is_selected = i == current + ChatView.HEADER_HEIGHT
             date = get_date(chat)
             title = chat["title"]
             offset = 0
@@ -302,6 +307,8 @@ class ChatView:
 
 
 class MsgView:
+    HEADER_HEIGHT = 2
+
     def __init__(
         self,
         stdscr: window,
@@ -481,8 +488,8 @@ class MsgView:
                     needed_lines += (line_len // self.w) + 1
 
                 line_num -= needed_lines
-                if line_num < 0:
-                    tail_lines = needed_lines + line_num - 1
+                if line_num <= MsgView.HEADER_HEIGHT:
+                    tail_lines = needed_lines + line_num - MsgView.HEADER_HEIGHT
                     # try preview long message that did fit in the screen
                     if tail_lines > 0 and not is_selected_msg:
                         limit = self.w * tail_lines
@@ -493,7 +500,7 @@ class MsgView:
                             "",
                             f" ...{msg[tail_chatacters:]}",
                         )
-                        collected_items.append((elements, is_selected_msg, 0))
+                        collected_items.append((elements, is_selected_msg, MsgView.HEADER_HEIGHT))
                     break
                 collected_items.append((elements, is_selected_msg, line_num))
                 if is_selected_msg:
@@ -524,6 +531,11 @@ class MsgView:
         if not msgs_to_draw:
             log.error("Can't collect message for drawing!")
 
+        # Draw title
+        self.win.addstr(0, 0, self._msg_title(chat), get_color(cyan, -1) | bold)
+        # Draw separator
+        self.win.addstr(1, 0, "-" * self.w, get_color(cyan, -1) | bold)
+
         for elements, selected, line_num in msgs_to_draw:
             column = 0
             user = elements[1]
@@ -551,10 +563,6 @@ class MsgView:
                 else:
                     self.win.addstr(line_num, column, elem, attr)
                 column += string_len_dwc(elem)
-
-        self.win.addstr(
-            0, 0, self._msg_title(chat), get_color(cyan, -1) | bold
-        )
 
         self._refresh()
 

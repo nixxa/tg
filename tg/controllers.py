@@ -23,7 +23,7 @@ from tg.utils import (
     notify,
     suspend,
 )
-from tg.views import View
+from tg.views import View, ChatView
 
 log = logging.getLogger(__name__)
 
@@ -832,7 +832,7 @@ class Controller:
         self.queue.put(self._render_chats)
 
     def _render_chats(self) -> None:
-        page_size = self.view.chats.h - 1
+        page_size = self.view.chats.h - ChatView.HEADER_HEIGHT
         chats = self.model.get_chats(
             self.model.current_chat, page_size, MSGS_LEFT_SCROLL_THRESHOLD
         )
