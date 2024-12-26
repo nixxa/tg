@@ -319,3 +319,8 @@ def cleanup_cache() -> None:
     files_path = os.path.join(config.FILES_DIR, "files")
     cmd = f"find {files_path} -type f -mtime +{config.KEEP_MEDIA} -delete"
     subprocess.Popen(cmd, shell=True)
+
+def enumerate2(xs, start=0, step=1):
+    for x in xs:
+        yield (start, x)
+        start += step

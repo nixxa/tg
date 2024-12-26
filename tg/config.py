@@ -66,6 +66,8 @@ if _os_name == _linux:
 else:
     COPY_CMD = "pbcopy"
 
+CHAT_HEADER_HEIGHT = 1
+
 CHAT_FLAGS: Dict[str, str] = {}
 
 MSG_FLAGS: Dict[str, str] = {}
