@@ -679,10 +679,14 @@ class Controller:
 
     @bind(chat_handler, ["l", "^J", "^E"])
     def handle_msgs(self) -> Optional[str]:
-        rc = self.handle(msg_handler, 0.2)
+        rows, cols = self.view.stdscr.getmaxyx()
+        chat_size = 0 if self._is_narrow_mode() else 0.3
+        rc = self.handle(msg_handler, chat_size)
         if rc == "QUIT":
             return rc
-        self.chat_size = 0.5
+        
+        chat_size = 1 if self._is_narrow_mode() else 0.5
+        self.chat_size = chat_size
         self.resize()
 
     @bind(chat_handler, ["g"])
@@ -751,7 +755,8 @@ class Controller:
 
     def run(self) -> None:
         try:
-            self.handle(chat_handler, 0.5)
+            chat_size = 1 if self._is_narrow_mode() else 0.5
+            self.handle(chat_handler, chat_size)
             self.queue.put(self.close)
         except Exception:
             log.exception("Error happened in main loop")
@@ -792,10 +797,16 @@ class Controller:
 
         chat_width = round(cols * self.chat_size)
         msg_width = cols - chat_width
-        self.view.chats.resize(rows, cols, chat_width)
-        self.view.msgs.resize(rows, cols, msg_width)
+        if chat_width > 0:
+            self.view.chats.resize(rows, cols, chat_width)
+        if msg_width > 0:
+            self.view.msgs.resize(rows, cols, msg_width)
         self.view.status.resize(rows, cols)
         self._render()
+
+    def _is_narrow_mode(self) -> bool:
+        rows, cols = self.view.stdscr.getmaxyx()
+        return config.AUTO_NARROW_MODE and cols <= config.AUTO_NARROW_MODE_COLS
 
     def draw(self) -> None:
         while self.is_running:
@@ -822,8 +833,10 @@ class Controller:
         self.queue.put(self._render)
 
     def _render(self) -> None:
-        self._render_chats()
-        self._render_msgs()
+        if self.chat_size > 0:
+            self._render_chats()
+        if self.chat_size < 1:
+            self._render_msgs()
 
     def render_status(self) -> None:
         self.view.status.draw()
@@ -832,7 +845,7 @@ class Controller:
         self.queue.put(self._render_chats)
 
     def _render_chats(self) -> None:
-        page_size = self.view.chats.h - ChatView.HEADER_HEIGHT
+        page_size = self.view.chats.h - 1
         chats = self.model.get_chats(
             self.model.current_chat, page_size, MSGS_LEFT_SCROLL_THRESHOLD
         )

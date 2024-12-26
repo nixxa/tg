@@ -166,10 +166,12 @@ class ChatView:
         self.win = Win(stdscr.subwin(self.h, self.w, 0, 0))
         self._refresh = self.win.refresh
         self.model = model
+        self.draw_vline = True
 
     def resize(self, rows: int, cols: int, width: int) -> None:
         self.h = rows - 1
         self.w = width
+        self.draw_vline = False if cols == width else True
         self.win.resize(self.h, self.w)
 
     def _msg_color(self, is_selected: bool = False) -> int:
@@ -211,10 +213,13 @@ class ChatView:
         self, current: int, chats: List[Dict[str, Any]], title: str = "Chats"
     ) -> None:
         self.win.erase()
-        line = curses.ACS_VLINE  # type: ignore
-        width = self.w - 1
 
-        self.win.vline(0, width, line, self.h)
+        width = self.w
+        if self.draw_vline:
+            # Draw vertical line (sperator between chats and messages)
+            width = self.w - 1
+            self.win.vline(0, width, curses.ACS_VLINE, self.h)
+
         # Draw view title
         self.win.addstr(
             0, 0, title.center(width)[:width], get_color(cyan, -1) | bold
