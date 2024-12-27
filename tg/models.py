@@ -442,6 +442,7 @@ class ChatModel:
 
         if len(chat["positions"]) > 0:
             chat["order"] = chat["positions"][0]["order"]
+            chat["is_pinned"] = chat["positions"][0]["is_pinned"]
         else:
             chat["order"] = 0  # str(sys.maxsize)
 

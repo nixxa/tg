@@ -749,8 +749,8 @@ class Controller:
     def toggle_pin(self) -> None:
         chat = self.model.chats.chats[self.model.current_chat]
         chat_id = chat["id"]
-        toggle = not chat["is_pinned"]
-        self.tg.toggle_chat_is_pinned(chat_id, toggle)
+        chat["is_pinned"] = not chat["is_pinned"]
+        self.tg.toggle_chat_is_pinned(chat_id, chat["is_pinned"])
         self.render()
 
     def run(self) -> None:
