@@ -491,6 +491,7 @@ class MsgView:
         function will remove message one by one from the start until selected
         message could be visible on the screen.
         """
+        chat = self.model.chats.chat_by_index(self.model.current_chat)
         selected_item_idx: Optional[int] = None
         collected_items: List[Tuple[Tuple[str, ...], bool, int]] = []
         for ignore_before in range(len(msgs)):
@@ -504,7 +505,11 @@ class MsgView:
                 msg_date = msg_proxy.date.strftime("%H:%M:%S")
                 user_id_item = msg_proxy.sender_id
 
-                user_id = self.model.users.get_user_label(user_id_item)
+                user_id = "<Unknown>"
+                if 'is_channel' in chat['type'] and chat['type']['is_channel']:
+                    user_id = chat['title']
+                else:
+                    user_id = self.model.users.get_user_label(user_id_item)
                 flags = self._get_flags(msg_proxy)
                 if user_id and flags:
                     # if not channel add space between name and flags

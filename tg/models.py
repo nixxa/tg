@@ -387,6 +387,11 @@ class ChatModel:
         if index >= len(self.chats):
             return None
         return self.chats[index]["id"]
+    
+    def chat_by_index(self, index: int) -> Optional[Dict[str, Any]]:
+        if index >= len(self.chats):
+            return None
+        return self.chats[index]
 
     def fetch_chats(
         self, offset: int = 0, limit: int = 10
