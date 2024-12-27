@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from _curses import window  # type: ignore
 
 from tg import config
-from tg.colors import bold, cyan, get_color, magenta, reverse, white, yellow
+from tg.colors import bold, dim, cyan, get_color, magenta, reverse, white, yellow, blue
 from tg.models import Model, UserModel
 from tg.msg import MsgProxy
 from tg.tdlib import ChatType, get_chat_type, is_group
@@ -186,13 +186,21 @@ class ChatView:
             return color | reverse
         return color
 
+    def _title_color(self, title: str) -> int:
+        return get_color(cyan, -1) if not config.USE_CHAT_RANDOM_COLORS else get_color(get_color_by_str(title), -1)
+
+    def _subtitle_color(self, msg: Optional[str] = None) -> int:
+        if config.USE_CHAT_RANDOM_COLORS:
+            return get_color(get_color_by_str(msg or ""), -1)
+        return get_color(white, -1) | dim if msg else get_color(cyan, -1)
+
     def _chat_attributes(
-        self, is_selected: bool, title: str, user: Optional[str]
+        self, is_selected: bool, title: str, user: Optional[str] = None
     ) -> Tuple[int, ...]:
         attrs = (
             get_color(cyan, -1),
-            get_color(get_color_by_str(title), -1),
-            get_color(get_color_by_str(user or ""), -1),
+            self._title_color(title),
+            self._subtitle_color(user),
             self._msg_color(is_selected),
         )
         if is_selected:
@@ -225,7 +233,7 @@ class ChatView:
             0, 0, title.center(width)[:width], get_color(cyan, -1) | bold
         )
         # Draw separator
-        self.win.addstr(1, 0, "-" * width, get_color(cyan, -1) | bold)
+        self.win.addstr(1, 0, "-" * width, get_color(cyan, -1))
 
         for i, chat in enumerate2(chats, ChatView.HEADER_HEIGHT, int(config.CHAT_HEADER_HEIGHT)):
             is_selected = i == current * config.CHAT_HEADER_HEIGHT + ChatView.HEADER_HEIGHT
@@ -260,8 +268,8 @@ class ChatView:
                 # Draw chat title and flags
                 offset = 0
                 for attr, elem in zip(
-                    self._chat_attributes(is_selected, title, None),
-                    [f"{date} ", title, " " * width, " " * width],
+                    self._chat_attributes(is_selected, title),
+                    [f"{date} ", title, " " * width, ""],
                 ):
                     if not elem: 
                         continue
@@ -493,7 +501,7 @@ class MsgView:
             for msg_idx, msg_item in msgs[ignore_before:]:
                 is_selected_msg = current_msg_idx == msg_idx
                 msg_proxy = MsgProxy(msg_item)
-                dt = msg_proxy.date.strftime("%H:%M:%S")
+                msg_date = msg_proxy.date.strftime("%H:%M:%S")
                 user_id_item = msg_proxy.sender_id
 
                 user_id = self.model.users.get_user_label(user_id_item)
@@ -501,7 +509,7 @@ class MsgView:
                 if user_id and flags:
                     # if not channel add space between name and flags
                     flags = f" {flags}"
-                label_elements = f" {dt} ", user_id, flags
+                label_elements = f" {msg_date} ", user_id, flags
                 label_len = sum(string_len_dwc(e) for e in label_elements)
 
                 msg = self._format_msg(
@@ -567,7 +575,7 @@ class MsgView:
         # Draw title
         self.win.addstr(0, 0, self._msg_title(chat), get_color(cyan, -1) | bold)
         # Draw separator
-        self.win.addstr(1, 0, "-" * self.w, get_color(cyan, -1) | bold)
+        self.win.addstr(1, 0, "-" * self.w, get_color(cyan, -1))
 
         for elements, selected, line_num in msgs_to_draw:
             column = 0
@@ -625,10 +633,16 @@ class MsgView:
 
         return f"{chat['title']}: {status}".center(self.w)[: self.w]
 
+    def _user_color(self, user: str) -> int:
+        return get_color(get_color_by_str(user), -1)
+        # if user == self.model.users.get_user_label(self.model.users.me['id']):
+        #     return get_color(blue, -1)
+        # return get_color(magenta, -1)
+
     def _msg_attributes(self, is_selected: bool, user: str) -> Tuple[int, ...]:
         attrs = (
             get_color(cyan, -1),
-            get_color(get_color_by_str(user), -1),
+            self._user_color(user),
             get_color(yellow, -1),
             get_color(white, -1),
         )
