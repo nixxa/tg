@@ -26,6 +26,14 @@ MULTICHAR_KEYBINDINGS = (
     "ng",
     "bp",
 )
+if config.LAYOUT_MAPPING:
+    mapped_bindings = []
+    for binding in MULTICHAR_KEYBINDINGS:
+        mapped_binding = ""
+        for char in binding:
+            mapped_binding += config.LAYOUT_MAPPING[char]
+        mapped_bindings.append(mapped_binding)
+    MULTICHAR_KEYBINDINGS = (*MULTICHAR_KEYBINDINGS, *mapped_bindings)
 
 
 class Win:
@@ -83,15 +91,19 @@ class View:
 
         for _ in range(MAX_KEYBINDING_LENGTH):
             ch = self.stdscr.getch()
-            log.info("raw ch without unctrl: %s", ch)
-            try:
-                key = curses.unctrl(ch).decode()
-            except Exception:
-                log.warning("cant uncrtl: %s", ch)
-                break
-            if key.isdigit():
-                repeat_factor += key
-                continue
+            if ch == 208 or ch == 209:
+                second_ch = self.stdscr.getch()
+                key = (ch.to_bytes() + second_ch.to_bytes()).decode('utf-8')
+            else:
+                log.info("raw ch without unctrl: %s", ch)
+                try:
+                    key = curses.unctrl(ch).decode()
+                except Exception:
+                    log.warning("cant uncrtl: %s", ch)
+                    break
+                if key.isdigit():
+                    repeat_factor += key
+                    continue
             keys += key
             # if match found or there are not any shortcut matches at all
             if all(
@@ -640,9 +652,6 @@ class MsgView:
 
     def _user_color(self, user: str) -> int:
         return get_color(get_color_by_str(user), -1)
-        # if user == self.model.users.get_user_label(self.model.users.me['id']):
-        #     return get_color(blue, -1)
-        # return get_color(magenta, -1)
 
     def _msg_attributes(self, is_selected: bool, user: str) -> Tuple[int, ...]:
         attrs = (

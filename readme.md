@@ -201,6 +201,14 @@ MAILCAP_FILE = os.path.expanduser("~/.config/mailcap")
 DOWNLOAD_DIR = os.path.expanduser("~/Downloads/")  # copy file to this dir
 ```
 
+# to map key bindings to a different language or a different keyboard layout
+LAYOUT_MAPPING = {
+    eng: rus for (eng, rus) in zip(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        "фисвуапршолдьтщзйкыегмцчняФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯ"
+    )
+}
+
 ### Mailcap file
 
 Mailcap file is used for deciding how to open telegram files (docs, pics, voice notes, etc.). Path to the file can be overriden with `MAILCAP_FILE` in config file.
