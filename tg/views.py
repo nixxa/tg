@@ -219,15 +219,15 @@ class ChatView:
             return tuple(attr | reverse for attr in attrs)
         return attrs
 
-    def _draw_chat_desc(self, elem, width, offset, flags_len, i, attr):
+    def _draw_chat_desc(self, elem, width, column, flags_len, line_num, attr):
         item = truncate_to_len(
-            elem, max(0, width - offset - flags_len)
+            elem, max(0, width - column - flags_len)
         )
         
         if len(item) > 1:
-            self.win.addstr(i, offset, item, attr)
-            offset += string_len_dwc(elem)
-        return offset
+            self.win.addstr(line_num, column, item, attr)
+            column += string_len_dwc(elem)
+        return column
 
     def draw(
         self, current: int, chats: List[Dict[str, Any]], title: str = "Chats"
@@ -247,8 +247,13 @@ class ChatView:
         # Draw separator
         self.win.addstr(1, 0, "-" * width, get_color(cyan, -1))
 
-        for i, chat in enumerate2(chats, ChatView.HEADER_HEIGHT, int(config.CHAT_HEADER_HEIGHT)):
-            is_selected = i == current * config.CHAT_HEADER_HEIGHT + ChatView.HEADER_HEIGHT
+        offset = 0
+        limit = int((self.h - ChatView.HEADER_HEIGHT) / 2)
+        if current >= limit:
+            offset = current - limit + 1
+
+        for line_num, chat in enumerate2(chats[offset:limit+offset], ChatView.HEADER_HEIGHT, int(config.CHAT_HEADER_HEIGHT)):
+            is_selected = line_num == (current - offset) * config.CHAT_HEADER_HEIGHT + ChatView.HEADER_HEIGHT
             date = get_date(chat)
             title = chat["title"]
 
@@ -259,7 +264,7 @@ class ChatView:
 
             if flags:
                 self.win.addstr(
-                    i,
+                    line_num,
                     max(0, width - flags_len),
                     truncate_to_len(flags, width)[-width:],
                     # flags[-width:],
@@ -268,33 +273,33 @@ class ChatView:
 
             if config.CHAT_HEADER_HEIGHT == 1:
                 # Draw all together in one line
-                offset = 0
+                column = 0
                 for attr, elem in zip(
                     self._chat_attributes(is_selected, title, last_msg_sender),
                     [f"{date} ", title, sender_label, f" {last_msg}"],
                 ):
                     if not elem: 
                         continue
-                    offset = self._draw_chat_desc(elem, width, offset, flags_len, i, attr)
+                    column = self._draw_chat_desc(elem, width, column, flags_len, line_num, attr)
             else:
                 # Draw chat title and flags
-                offset = 0
+                column = 0
                 for attr, elem in zip(
                     self._chat_attributes(is_selected, title),
                     [f"{date} ", title, " " * width, ""],
                 ):
                     if not elem: 
                         continue
-                    offset = self._draw_chat_desc(elem, width, offset, flags_len, i, attr)
+                    column = self._draw_chat_desc(elem, width, column, flags_len, line_num, attr)
                 # Draw chat last message
-                offset = 0
+                column = 0
                 for attr, elem in zip(
                     self._chat_attributes(False, title, last_msg_sender),
                     ["     ", "", sender_label, f" {last_msg}"]
                 ):
                     if not elem: 
                         continue
-                    offset = self._draw_chat_desc(elem, width, offset, flags_len, i+1, attr)
+                    column = self._draw_chat_desc(elem, width, column, flags_len, line_num+1, attr)
 
         self._refresh()
 
