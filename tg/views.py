@@ -466,6 +466,9 @@ class MsgView:
             )
         if reply_markup := self._format_reply_markup(msg_proxy):
             msg += reply_markup
+        
+        if links := msg_proxy.links_from_entities:
+            msg += links
 
         return msg
 
@@ -530,7 +533,6 @@ class MsgView:
                 # if not channel add space between name and flags
                 flags = f" {flags}"
             label_elements = f"{msg_date} ", user_id, flags
-            label_len = sum(string_len_dwc(e) for e in label_elements)
 
             msg = self._format_msg(
                 msg_proxy, width_limit=self.max_line_width

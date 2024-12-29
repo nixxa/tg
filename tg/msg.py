@@ -165,6 +165,22 @@ class MsgProxy:
     @property
     def text_content(self) -> str:
         return self.msg["content"]["text"]["text"]
+    
+    @property
+    def links_from_entities(self) -> str:
+        if entities := self.msg["content"]["text"].get("entities", None):
+            known_entities = set()
+            result: str = "\n\n"
+            for entity in entities:
+                if entity["@type"] == "textEntity":
+                    offset = entity["offset"]
+                    length = entity["length"]
+                    known_entities.add(entity["type"]["url"])
+            for url in known_entities:
+                result += f"{url}\n"
+            return result
+        return None
+                    
 
     @property
     def is_downloaded(self) -> bool:
