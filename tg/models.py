@@ -6,6 +6,7 @@ import time
 from collections import defaultdict, namedtuple
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from tg import config
 from tg.msg import MsgProxy
 from tg.tdlib import (
     ChatAction,

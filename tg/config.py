@@ -66,9 +66,16 @@ if _os_name == _linux:
 else:
     COPY_CMD = "pbcopy"
 
+# Narrow mode:
+# Diplays only chats list or messages list
 AUTO_NARROW_MODE = False
 AUTO_NARROW_MODE_COLS = 80
+
+# If True, chat title color will be based on title content
 USE_CHAT_RANDOM_COLORS = True
+
+# If True, the latest message will be displayed on top
+LATEST_MSG_ON_TOP = False
 
 CHAT_HEADER_HEIGHT = 1
 

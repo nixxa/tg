@@ -6,11 +6,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from _curses import window  # type: ignore
 
 from tg import config
-from tg.colors import bold, dim, cyan, get_color, magenta, reverse, white, yellow, blue
+from tg.colors import bold, dim, cyan, get_color, magenta, reverse, white, yellow, blue, black
 from tg.models import Model, UserModel
 from tg.msg import MsgProxy
 from tg.tdlib import ChatType, get_chat_type, is_group
-from tg.utils import get_color_by_str, num, string_len_dwc, truncate_to_len, enumerate2
+from tg.utils import flatten, get_color_by_str, num, split_string_dwc, string_len_dwc, truncate_to_len, enumerate2
 
 log = logging.getLogger(__name__)
 
@@ -489,6 +489,14 @@ class MsgView:
             msg += "|"
         return msg
 
+    @property
+    def max_line_width(self) -> int:
+        return self.w - self.first_column
+    
+    @property
+    def first_column(self) -> int:
+        return 1
+
     def _collect_msgs_to_draw(
         self,
         current_msg_idx: int,
@@ -504,74 +512,54 @@ class MsgView:
         message could be visible on the screen.
         """
         chat = self.model.chats.chat_by_index(self.model.current_chat)
-        selected_item_idx: Optional[int] = None
         collected_items: List[Tuple[Tuple[str, ...], bool, int]] = []
-        for ignore_before in range(len(msgs)):
-            if selected_item_idx is not None:
-                break
-            collected_items = []
-            line_num = self.h
-            for msg_idx, msg_item in msgs[ignore_before:]:
-                is_selected_msg = current_msg_idx == msg_idx
-                msg_proxy = MsgProxy(msg_item)
-                msg_date = msg_proxy.date.strftime("%H:%M:%S")
-                user_id_item = msg_proxy.sender_id
+        line_num = self.h - MsgView.HEADER_HEIGHT
+        for msg_idx, msg_item in msgs:
+            is_selected_msg = current_msg_idx == msg_idx
+            msg_proxy = MsgProxy(msg_item)
+            msg_date = msg_proxy.date.strftime("%H:%M:%S")
+            user_id_item = msg_proxy.sender_id
 
-                user_id = "<Unknown>"
-                if 'is_channel' in chat['type'] and chat['type']['is_channel']:
-                    user_id = chat['title']
+            user_id = "<Unknown>"
+            if 'is_channel' in chat['type'] and chat['type']['is_channel']:
+                user_id = chat['title']
+            else:
+                user_id = self.model.users.get_user_label(user_id_item)
+            flags = self._get_flags(msg_proxy)
+            if user_id and flags:
+                # if not channel add space between name and flags
+                flags = f" {flags}"
+            label_elements = f"{msg_date} ", user_id, flags
+            label_len = sum(string_len_dwc(e) for e in label_elements)
+
+            msg = self._format_msg(
+                msg_proxy, width_limit=self.max_line_width
+            )
+            msg_lines = flatten([split_string_dwc(msg_line, self.max_line_width) for msg_line in msg.split("\n")])
+            needed_lines = len(msg_lines) + 1
+            elements = *label_elements, msg
+            line_num -= needed_lines
+            if line_num < 0:
+                # If currently selected message is not visible on the screen, 
+                # then remove first collected item and inrease line_num
+                if msg_idx <= current_msg_idx:
+                    first_item = collected_items.pop(0)
+                    line_num += first_item[2] + needed_lines
                 else:
-                    user_id = self.model.users.get_user_label(user_id_item)
-                flags = self._get_flags(msg_proxy)
-                if user_id and flags:
-                    # if not channel add space between name and flags
-                    flags = f" {flags}"
-                label_elements = f" {msg_date} ", user_id, flags
-                label_len = sum(string_len_dwc(e) for e in label_elements)
-
-                msg = self._format_msg(
-                    msg_proxy, width_limit=self.w - label_len - 1
-                )
-                elements = *label_elements, f" {msg}"
-                needed_lines = 0
-                for i, msg_line in enumerate(msg.split("\n")):
-                    # count wide character utf-8 symbols that take > 1 bytes to
-                    # print it causes invalid offset
-                    line_len = string_len_dwc(msg_line)
-
-                    # first line cotains msg lable, e.g user name, date
-                    if i == 0:
-                        line_len += label_len
-
-                    needed_lines += (line_len // self.w) + 1
-
-                line_num -= needed_lines
-                if line_num <= MsgView.HEADER_HEIGHT:
-                    tail_lines = needed_lines + line_num - MsgView.HEADER_HEIGHT
-                    # try preview long message that did fit in the screen
-                    if tail_lines > 0 and not is_selected_msg:
-                        limit = self.w * tail_lines
-                        tail_chatacters = len(msg) - limit - 3
+                    if config.LATEST_MSG_ON_TOP:
+                        available_lines = line_num * -1 - 1
+                        elements = *label_elements, "\n".join(msg_lines[:available_lines])
+                        elements[3] = elements[3][0:len(elements[3]) - 3] + "..."
+                    else:
                         elements = (
                             "",
                             "",
                             "",
-                            f" ...{msg[tail_chatacters:]}",
+                            "\n".join(msg_lines[0:needed_lines + line_num])
                         )
-                        collected_items.append((elements, is_selected_msg, MsgView.HEADER_HEIGHT))
+                    collected_items.append((elements, is_selected_msg, needed_lines))
                     break
-                collected_items.append((elements, is_selected_msg, line_num))
-                if is_selected_msg:
-                    selected_item_idx = len(collected_items) - 1
-            if (
-                # ignore first and last msg
-                selected_item_idx not in (0, len(msgs) - 1, None)
-                and selected_item_idx is not None
-                and len(collected_items) - 1 - selected_item_idx
-                < min_msg_padding
-            ):
-                selected_item_idx = None
-
+            collected_items.append((elements, is_selected_msg, needed_lines))
         return collected_items
 
     def draw(
@@ -586,7 +574,7 @@ class MsgView:
             current_msg_idx, msgs, min_msg_padding
         )
 
-        if not msgs_to_draw:
+        if not msgs:
             log.error("Can't collect message for drawing!")
 
         # Draw title
@@ -594,33 +582,33 @@ class MsgView:
         # Draw separator
         self.win.addstr(1, 0, "-" * self.w, get_color(cyan, -1))
 
-        for elements, selected, line_num in msgs_to_draw:
+        if not config.LATEST_MSG_ON_TOP:
+            msgs_to_draw = reversed(msgs_to_draw)
+
+        line_num = 2
+        for elements, selected, _ in msgs_to_draw:
             column = 0
             user = elements[1]
+            # Draw message label
             for attr, elem in zip(
-                self._msg_attributes(selected, user), elements
+                self._msg_attributes(selected, user), elements[0:3]
             ):
                 if not elem:
                     continue
-                lines = (column + string_len_dwc(elem)) // self.w
-                last_line = self.h == line_num + lines
-                # work around agaist curses behaviour, when you cant write
-                # char to the lower right coner of the window
-                # see https://stackoverflow.com/questions/21594778/how-to-fill-to-lower-right-corner-in-python-curses/27517397#27517397
-                if last_line:
-                    start, stop = 0, self.w - column
-                    for i in range(lines):
-                        # insstr does not wraps long strings
-                        self.win.insstr(
-                            line_num + i,
-                            column if not i else 0,
-                            elem[start:stop],
-                            attr,
-                        )
-                        start, stop = stop, stop + self.w
-                else:
-                    self.win.addstr(line_num, column, elem, attr)
+                self.win.addstr(line_num, column, elem, attr)
                 column += string_len_dwc(elem)
+            line_num += 1 if column > 0 else 0
+            # Draw message body
+            for msg_line in elements[3].split("\n"):
+                len = string_len_dwc(msg_line)
+                if len > self.max_line_width:
+                    line_parts = split_string_dwc(msg_line, self.max_line_width)
+                    for part in line_parts:
+                        self.win.addstr(line_num, self.first_column, part, get_color(white, -1))
+                        line_num += 1
+                else:
+                    self.win.addstr(line_num, self.first_column, msg_line, get_color(white, -1))
+                    line_num += 1
 
         self._refresh()
 
@@ -650,13 +638,13 @@ class MsgView:
 
         return f"{chat['title']}: {status}".center(self.w)[: self.w]
 
-    def _user_color(self, user: str) -> int:
+    def _user_color(self, user: str, is_selected: bool) -> int:
         return get_color(get_color_by_str(user), -1)
 
     def _msg_attributes(self, is_selected: bool, user: str) -> Tuple[int, ...]:
         attrs = (
             get_color(cyan, -1),
-            self._user_color(user),
+            get_color(get_color_by_str(user), -1),
             get_color(yellow, -1),
             get_color(white, -1),
         )
@@ -699,7 +687,7 @@ def get_date(chat: Dict[str, Any]) -> str:
 
 def parse_content(msg: MsgProxy, users: UserModel) -> str:
     if msg.is_text:
-        return msg.text_content.replace("\n", " ")
+        return msg.text_content #.replace("\n", "\n ")
 
     content = msg["content"]
     _type = content["@type"]

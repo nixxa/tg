@@ -189,10 +189,37 @@ def notify(
     subprocess.Popen(notify_cmd, shell=True)
 
 
+def flatten(source: list[Any]) -> list[Any]:
+    result = []
+    if len(source) == 0:
+        result.append("")
+        return result
+    for item in source:
+        if isinstance(item, list):
+            result.extend(flatten(item))
+        else:
+            result.append(item)
+    return result
+
 def string_len_dwc(string: str) -> int:
     """Returns string len including count for double width characters"""
     return sum(1 + (unicodedata.east_asian_width(c) in "WF") for c in string)
 
+def split_string_dwc(string: str, width: int) -> list[str]:
+    """Split string into lines with width including double width characters"""
+    lines = []
+    cur_len = 0
+    cur_line = ""
+    for char in string:
+        cur_len += 2 if unicodedata.east_asian_width(char) in "WF" else 1
+        cur_line += char
+        if cur_len >= width:
+            lines.append(cur_line)
+            cur_line = ""
+            cur_len = 0
+    if cur_line:
+        lines.append(cur_line)
+    return lines
 
 def truncate_to_len(string: str, width: int) -> str:
     real_len = string_len_dwc(string)
