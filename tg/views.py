@@ -10,7 +10,7 @@ from tg.colors import bold, dim, cyan, get_color, magenta, reverse, white, yello
 from tg.models import Model, UserModel
 from tg.msg import MsgProxy
 from tg.tdlib import ChatType, get_chat_type, is_group
-from tg.utils import flatten, get_color_by_str, num, split_string_dwc, string_len_dwc, truncate_to_len, enumerate2
+from tg.utils import flatten, get_color_by_str, num, head_ellipsis, tail_ellipsis, split_string_dwc, string_len_dwc, truncate_to_len, enumerate2
 
 log = logging.getLogger(__name__)
 
@@ -521,7 +521,7 @@ class MsgView:
         """
         chat = self.model.chats.chat_by_index(self.model.current_chat)
         collected_items: List[Tuple[Tuple[str, ...], bool, int]] = []
-        line_num = self.h - MsgView.HEADER_HEIGHT
+        lines_available = self.h - MsgView.HEADER_HEIGHT
         for msg_idx, msg_item in msgs:
             is_selected_msg = current_msg_idx == msg_idx
             msg_proxy = MsgProxy(msg_item)
@@ -545,26 +545,28 @@ class MsgView:
             msg_lines = flatten([split_string_dwc(msg_line, self.max_line_width) for msg_line in msg.split("\n")])
             needed_lines = len(msg_lines) + 1
             elements = *label_elements, msg
-            line_num -= needed_lines
-            if line_num < 0:
+            lines_available -= needed_lines
+            if lines_available < 0:
                 # If currently selected message is not visible on the screen, 
                 # then remove first collected item and inrease line_num
                 if msg_idx <= current_msg_idx:
                     first_item = collected_items.pop(0)
-                    line_num += first_item[2] + needed_lines
+                    lines_available += first_item[2] + needed_lines
                 else:
                     if config.LATEST_MSG_ON_TOP:
-                        available_lines = line_num * -1 - 1
-                        elements = *label_elements, "\n".join(msg_lines[:available_lines])
-                        elements[3] = elements[3][0:len(elements[3]) - 3] + "..."
+                        selected_lines = msg_lines[:abs(lines_available) - 1]
+                        selected_lines[len(selected_lines) - 1] = tail_ellipsis(selected_lines[len(selected_lines) - 1], self.max_line_width)
+                        elements = *label_elements, "\n".join(selected_lines)
                     else:
-                        elements = (
-                            "",
-                            "",
-                            "",
-                            "\n".join(msg_lines[0:needed_lines + line_num])
-                        )
-                    collected_items.append((elements, is_selected_msg, needed_lines))
+                        selected_lines_count = needed_lines - abs(lines_available)
+                        if selected_lines_count > 0:
+                            selected_lines = msg_lines[-selected_lines_count:]
+                            selected_lines[0] = head_ellipsis(selected_lines[0], self.max_line_width)
+                            elements = ("", "", "", "\n".join(selected_lines))
+                        else:
+                            elements = ("", "", "", "")
+                    if (elements[3] != ""):
+                        collected_items.append((elements, is_selected_msg, needed_lines))
                     break
             collected_items.append((elements, is_selected_msg, needed_lines))
         return collected_items

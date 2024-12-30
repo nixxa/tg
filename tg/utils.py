@@ -351,3 +351,15 @@ def enumerate2(xs, start=0, step=1):
     for x in xs:
         yield (start, x)
         start += step
+
+def tail_ellipsis(string: str, max_width: int, replacement: str = "...") -> str:
+    diff = max_width - len(string)
+    if diff <= 3:
+        return string[:-diff] + replacement
+    return string + replacement
+
+def head_ellipsis(string: str, max_width: int, replacement: str = "...") -> str:
+    diff = max_width - len(string)
+    if diff <= 3:
+        return replacement + string[diff:]
+    return replacement + string
