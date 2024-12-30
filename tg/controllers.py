@@ -829,8 +829,8 @@ class Controller:
                 log.info("Queue size: %d", self.queue.qsize())
                 fun = self.queue.get()
                 fun()
-            except Exception:
-                log.exception("Error happened in draw loop")
+            except Exception as e:
+                log.exception(f"Error happened in draw loop: {e}")
 
     def present_error(self, msg: str) -> None:
         return self.update_status("Error", msg)
@@ -848,16 +848,15 @@ class Controller:
         self.queue.put(self._render)
 
     def _render(self) -> None:
-        if self.chat_size > 0:
-            self._render_chats()
-        if self.chat_size < 1:
-            self._render_msgs()
+        self.render_chats()
+        self.render_msgs()
 
     def render_status(self) -> None:
         self.view.status.draw()
 
     def render_chats(self) -> None:
-        self.queue.put(self._render_chats)
+        if self.chat_size > 0:
+            self.queue.put(self._render_chats)
 
     def _render_chats(self) -> None:
         page_size = self.view.chats.h - 1
@@ -870,7 +869,8 @@ class Controller:
         self.view.chats.draw(selected_chat, chats, self.model.chats.title)
 
     def render_msgs(self) -> None:
-        self.queue.put(self._render_msgs)
+        if self.chat_size < 1:
+            self.queue.put(self._render_msgs)
 
     def _render_msgs(self) -> None:
         current_msg_idx = self.model.get_current_chat_msg_idx()
@@ -882,9 +882,7 @@ class Controller:
             msgs_left_scroll_threshold=MSGS_LEFT_SCROLL_THRESHOLD,
         )
         chat = self.model.chats.chats[self.model.current_chat]
-        self.view.msgs.draw(
-            current_msg_idx, msgs, MSGS_LEFT_SCROLL_THRESHOLD, chat
-        )
+        self.view.msgs.draw(current_msg_idx, msgs, chat)
 
     def notify_for_message(self, chat_id: int, msg: MsgProxy) -> None:
         # do not notify, if muted

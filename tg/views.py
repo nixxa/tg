@@ -1,16 +1,15 @@
 import curses
 import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
-from _curses import window  # type: ignore
+from _curses import window
 
 from tg import config
-from tg.colors import bold, dim, cyan, get_color, magenta, reverse, white, yellow, blue, black
-from tg.models import Model, UserModel
+from tg.colors import get_color, white
+from tg.formatters import ChatFormatter, FormattedLine, MessagesHeaderFormatter, MsgFormatter, HeaderFormatter
+from tg.models import Model
 from tg.msg import MsgProxy
-from tg.tdlib import ChatType, get_chat_type, is_group
-from tg.utils import flatten, get_color_by_str, num, head_ellipsis, tail_ellipsis, split_string_dwc, string_len_dwc, truncate_to_len, enumerate2
+from tg.utils import num, string_len_dwc, enumerate2
 
 log = logging.getLogger(__name__)
 
@@ -115,6 +114,35 @@ class View:
         return cast(int, num(repeat_factor, default=1)), keys or "UNKNOWN"
 
 
+class AbstractView:
+    def __init__(self, win: Win) -> None:
+        self.win = win
+        self.first_column = 0
+        self.w = curses.COLS
+
+    @property
+    def width(self) -> int:
+        return self.w - self.first_column
+    
+    def draw_lines(self, line_num, lines) -> int:
+        """
+        Draws multiple lines on the window starting from a given line number.
+        Args:
+            line_num (int): The starting line number where the lines will be drawn.
+            lines (list): A list of line objects to be drawn. Each line object should have a 'parts' attribute,
+                          which is a list of parts. Each part should have 'text' and 'attributes' attributes.
+        Returns:
+            int: The line number after the last drawn line.
+        """
+        for line in lines:
+            column = self.first_column
+            for part in line.parts:
+                self.win.addstr(line_num, column, part.text, part.attributes)
+                column += string_len_dwc(part.text)
+            line_num += 1
+        return line_num
+
+
 class StatusView:
     def __init__(self, stdscr: window) -> None:
         self.h = 1
@@ -168,66 +196,28 @@ class StatusView:
         return buff
 
 
-class ChatView:
-    HEADER_HEIGHT = 2
-
-    def __init__(self, stdscr: window, model: Model) -> None:
+class ChatView(AbstractView):
+    def __init__(
+            self,
+            stdscr: window,
+            model: Model,
+            header_fmt: Optional[HeaderFormatter] = HeaderFormatter,
+            chat_fmt: Optional[ChatFormatter] = ChatFormatter) -> None:
+        super().__init__(Win(stdscr.subwin(0, 0, 0, 0)))
         self.stdscr = stdscr
         self.h = 0
         self.w = 0
-        self.win = Win(stdscr.subwin(self.h, self.w, 0, 0))
         self._refresh = self.win.refresh
         self.model = model
         self.draw_vline = True
+        self.header_formatter = header_fmt
+        self.chat_formatter = chat_fmt
 
     def resize(self, rows: int, cols: int, width: int) -> None:
         self.h = rows - 1
         self.w = width
         self.draw_vline = False if cols == width else True
         self.win.resize(self.h, self.w)
-
-    def _msg_color(self, is_selected: bool = False) -> int:
-        color = get_color(white, -1)
-        if is_selected:
-            return color | reverse
-        return color
-
-    def _unread_color(self, is_selected: bool = False) -> int:
-        color = get_color(magenta, -1)
-        if is_selected:
-            return color | reverse
-        return color
-
-    def _title_color(self, title: str) -> int:
-        return get_color(cyan, -1) if not config.USE_CHAT_RANDOM_COLORS else get_color(get_color_by_str(title), -1)
-
-    def _subtitle_color(self, msg: Optional[str] = None) -> int:
-        if config.USE_CHAT_RANDOM_COLORS:
-            return get_color(get_color_by_str(msg or ""), -1)
-        return get_color(white, -1) | dim if msg else get_color(cyan, -1)
-
-    def _chat_attributes(
-        self, is_selected: bool, title: str, user: Optional[str] = None
-    ) -> Tuple[int, ...]:
-        attrs = (
-            get_color(cyan, -1),
-            self._title_color(title),
-            self._subtitle_color(user),
-            self._msg_color(is_selected),
-        )
-        if is_selected:
-            return tuple(attr | reverse for attr in attrs)
-        return attrs
-
-    def _draw_chat_desc(self, elem, width, column, flags_len, line_num, attr):
-        item = truncate_to_len(
-            elem, max(0, width - column - flags_len)
-        )
-        
-        if len(item) > 1:
-            self.win.addstr(line_num, column, item, attr)
-            column += string_len_dwc(elem)
-        return column
 
     def draw(
         self, current: int, chats: List[Dict[str, Any]], title: str = "Chats"
@@ -240,149 +230,42 @@ class ChatView:
             width = self.w - 1
             self.win.vline(0, width, curses.ACS_VLINE, self.h)
 
-        # Draw view title
-        self.win.addstr(
-            0, 0, title.center(width)[:width], get_color(cyan, -1) | bold
-        )
-        # Draw separator
-        self.win.addstr(1, 0, "-" * width, get_color(cyan, -1))
+        # Draw title
+        header_fmt = self.header_formatter(title.center(width)[:width])
+        header_lines = header_fmt.format(width)
+        line_num = self.draw_lines(0, header_lines)
 
+        header_height = len(header_lines)
         offset = 0
-        limit = int((self.h - ChatView.HEADER_HEIGHT) / 2)
+        limit = int((self.h - header_height) / 2)
         if current >= limit:
             offset = current - limit + 1
 
-        for line_num, chat in enumerate2(chats[offset:limit+offset], ChatView.HEADER_HEIGHT, int(config.CHAT_HEADER_HEIGHT)):
-            is_selected = line_num == (current - offset) * config.CHAT_HEADER_HEIGHT + ChatView.HEADER_HEIGHT
-            date = get_date(chat)
-            title = chat["title"]
-
-            last_msg_sender, last_msg = self._get_last_msg_data(chat)
-            sender_label = f" {last_msg_sender}" if last_msg_sender else ""
-            flags = self._get_flags(chat)
-            flags_len = string_len_dwc(flags)
-
-            if flags:
-                self.win.addstr(
-                    line_num,
-                    max(0, width - flags_len),
-                    truncate_to_len(flags, width)[-width:],
-                    # flags[-width:],
-                    self._unread_color(is_selected),
-                )
-
-            if config.CHAT_HEADER_HEIGHT == 1:
-                # Draw all together in one line
-                column = 0
-                for attr, elem in zip(
-                    self._chat_attributes(is_selected, title, last_msg_sender),
-                    [f"{date} ", title, sender_label, f" {last_msg}"],
-                ):
-                    if not elem: 
-                        continue
-                    column = self._draw_chat_desc(elem, width, column, flags_len, line_num, attr)
-            else:
-                # Draw chat title and flags
-                column = 0
-                for attr, elem in zip(
-                    self._chat_attributes(is_selected, title),
-                    [f"{date} ", title, " " * width, ""],
-                ):
-                    if not elem: 
-                        continue
-                    column = self._draw_chat_desc(elem, width, column, flags_len, line_num, attr)
-                # Draw chat last message
-                column = 0
-                for attr, elem in zip(
-                    self._chat_attributes(False, title, last_msg_sender),
-                    ["     ", "", sender_label, f" {last_msg}"]
-                ):
-                    if not elem: 
-                        continue
-                    column = self._draw_chat_desc(elem, width, column, flags_len, line_num+1, attr)
-
+        for line_num, chat in enumerate2(chats[offset:limit+offset], header_height, self.chat_formatter.height):
+            is_selected = line_num == (current - offset) * self.chat_formatter.height + header_height
+            formatter = self.chat_formatter(chat, self.model, is_selected)
+            lines = formatter.format(width)
+            line_num = self.draw_lines(line_num, lines)
         self._refresh()
 
-    def _get_last_msg_data(
-        self, chat: Dict[str, Any]
-    ) -> Tuple[Optional[str], Optional[str]]:
-        user, last_msg = get_last_msg(chat, self.model.users)
-        last_msg = last_msg.replace("\n", " ")
-        if user:
-            last_msg_sender = self.model.users.get_user_label(user)
-            chat_type = get_chat_type(chat)
-            if chat_type and is_group(chat_type):
-                return last_msg_sender, last_msg
 
-        return None, last_msg
-
-    def _get_flags(self, chat: Dict[str, Any]) -> str:
-        flags = []
-
-        msg = chat.get("last_message")
-        if (
-            msg
-            and self.model.is_me(msg["sender_id"].get("user_id"))
-            and msg["id"] > chat["last_read_outbox_message_id"]
-            and not self.model.is_me(chat["id"])
-        ):
-            # last msg haven't been seen by recipient
-            flags.append("unseen")
-        elif (
-            msg
-            and self.model.is_me(msg["sender_id"].get("user_id"))
-            and msg["id"] <= chat["last_read_outbox_message_id"]
-        ):
-            flags.append("seen")
-
-        if action_label := _get_action_label(self.model.users, chat):
-            flags.append(action_label)
-
-        if self.model.users.is_online(chat["id"]):
-            flags.append("online")
-
-        if "is_pinned" in chat and chat["is_pinned"]:
-            flags.append("pinned")
-
-        if chat["notification_settings"]["mute_for"]:
-            flags.append("muted")
-
-        if chat["is_marked_as_unread"]:
-            flags.append("unread")
-        elif chat["unread_count"]:
-            unread_count = min(999, int(chat["unread_count"]))
-            flags.append(f"{unread_count: >4}")
-        else:
-            flags.append("    ")
-
-        if get_chat_type(chat) == ChatType.chatTypeSecret:
-            flags.append("secret")
-
-        label = " ".join(config.CHAT_FLAGS.get(flag, flag) for flag in flags)
-        if label:
-            return f" {label}"
-        return label
-
-
-class MsgView:
-    HEADER_HEIGHT = 2
-
+class MsgView(AbstractView):
     def __init__(
         self,
         stdscr: window,
         model: Model,
+        header_fmt: Optional[MessagesHeaderFormatter] = MessagesHeaderFormatter,
+        msg_fmt: Optional[MsgFormatter] = MsgFormatter,
     ) -> None:
+        super().__init__(Win(stdscr.subwin(0, 0, 0, 0)))
         self.model = model
         self.stdscr = stdscr
         self.h = 0
         self.w = 0
         self.x = 0
-        self.win = Win(self.stdscr.subwin(self.h, self.w, 0, self.x))
         self._refresh = self.win.refresh
-        self.states = {
-            "messageSendingStateFailed": "failed",
-            "messageSendingStatePending": "pending",
-        }
+        self.header_formatter = header_fmt
+        self.message_formatter = msg_fmt
 
     def resize(self, rows: int, cols: int, width: int) -> None:
         self.h = rows - 1
@@ -390,391 +273,68 @@ class MsgView:
         self.x = cols - self.w
         self.win.resize(self.h, self.w)
         self.win.mvwin(0, self.x)
-
-    def _get_flags(self, msg_proxy: MsgProxy) -> str:
-        flags = []
-        chat = self.model.chats.chats[self.model.current_chat]
-
-        if msg_proxy.msg_id in self.model.selected[chat["id"]]:
-            flags.append("selected")
-
-        if msg_proxy.forward is not None:
-            flags.append("forwarded")
-
-        if (
-            not self.model.is_me(msg_proxy.sender_id)
-            and msg_proxy.msg_id > chat["last_read_inbox_message_id"]
-        ):
-            flags.append("new")
-        elif (
-            self.model.is_me(msg_proxy.sender_id)
-            and msg_proxy.msg_id > chat["last_read_outbox_message_id"]
-        ):
-            if not self.model.is_me(chat["id"]):
-                flags.append("unseen")
-        elif (
-            self.model.is_me(msg_proxy.sender_id)
-            and msg_proxy.msg_id <= chat["last_read_outbox_message_id"]
-        ):
-            flags.append("seen")
-        if state := msg_proxy.msg.get("sending_state"):
-            log.info("state: %s", state)
-            state_type = state["@type"]
-            flags.append(self.states.get(state_type, state_type))
-        if msg_proxy.msg["edit_date"]:
-            flags.append("edited")
-
-        if not flags:
-            return ""
-        return " ".join(config.MSG_FLAGS.get(flag, flag) for flag in flags)
-
-    def _format_reply_msg(
-        self, chat_id: int, msg: str, reply_to: int, width_limit: int
-    ) -> str:
-        _msg = self.model.msgs.get_message(chat_id, reply_to)
-        if not _msg:
-            return msg
-        reply_msg = MsgProxy(_msg)
-        if reply_msg_content := self._parse_msg(reply_msg):
-            reply_sender = self.model.users.get_user_label(reply_msg.sender_id)
-            sender_name = f" {reply_sender}:" if reply_sender else ""
-            reply_line = f">{sender_name} {reply_msg_content}"
-            if len(reply_line) >= width_limit:
-                reply_line = f"{reply_line[:width_limit - 4]}..."
-            msg = f"{reply_line}\n{msg}"
-        return msg
-
-    @staticmethod
-    def _format_url(msg_proxy: MsgProxy) -> str:
-        if not msg_proxy.is_text or "web_page" not in msg_proxy.msg["content"]:
-            return ""
-        web = msg_proxy.msg["content"]["web_page"]
-        page_type = web["type"]
-        if page_type == "photo":
-            return f"\n | photo: {web['url']}"
-        name = web["site_name"]
-        title = web["title"]
-        description = web["description"]["text"].replace("\n", "")
-        url = f"\n | {name}: {title}"
-        if description:
-            url += f"\n | {description}"
-        return url
-
-    def _format_msg(self, msg_proxy: MsgProxy, width_limit: int) -> str:
-        msg = self._parse_msg(msg_proxy)
-        if caption := msg_proxy.caption:
-            msg += "\n" + caption.replace("\n", " ")
-        msg += self._format_url(msg_proxy)
-        if reply_to := msg_proxy.reply_msg_id:
-            msg = self._format_reply_msg(
-                msg_proxy.chat_id, msg, reply_to, width_limit
-            )
-        if reply_markup := self._format_reply_markup(msg_proxy):
-            msg += reply_markup
-        
-        if links := msg_proxy.links_from_entities:
-            msg += links
-
-        return msg
-
-    @staticmethod
-    def _format_reply_markup(msg_proxy: MsgProxy) -> str:
-        msg = ""
-        reply_markup = msg_proxy.reply_markup
-        if not reply_markup:
-            return msg
-        for row in msg_proxy.reply_markup_rows:
-            msg += "\n"
-            for item in row:
-                text = item.get("text")
-                if not text:
-                    continue
-                _type = item.get("type", {})
-                if _type.get("@type") == "inlineKeyboardButtonTypeUrl":
-                    if url := _type.get("url"):
-                        text = f"{text} ({url})"
-                msg += f"| {text} "
-            msg += "|"
-        return msg
-
-    @property
-    def max_line_width(self) -> int:
-        return self.w - self.first_column
     
-    @property
-    def first_column(self) -> int:
-        return 1
-
     def _collect_msgs_to_draw(
         self,
         current_msg_idx: int,
         msgs: List[Tuple[int, Dict[str, Any]]],
-        min_msg_padding: int,
-    ) -> List[Tuple[Tuple[str, ...], bool, int]]:
-        """
-        Tries to collect list of messages that will satisfy `min_msg_padding`
-        theshold. Long messages could prevent other messages from displaying on
-        the screen. In order to prevent scenario when *selected* message moved
-        out from the visible area of the screen by some long messages, this
-        function will remove message one by one from the start until selected
-        message could be visible on the screen.
-        """
-        chat = self.model.chats.chat_by_index(self.model.current_chat)
-        collected_items: List[Tuple[Tuple[str, ...], bool, int]] = []
-        lines_available = self.h - MsgView.HEADER_HEIGHT
+    ) -> List[List[FormattedLine]]:
+        collected_items: List[List[FormattedLine]] = []
+        lines_available = self.h - self.header_formatter.height
         for msg_idx, msg_item in msgs:
             is_selected_msg = current_msg_idx == msg_idx
-            msg_proxy = MsgProxy(msg_item)
-            msg_date = msg_proxy.date.strftime("%H:%M:%S")
-            user_id_item = msg_proxy.sender_id
-
-            user_id = "<Unknown>"
-            if 'is_channel' in chat['type'] and chat['type']['is_channel']:
-                user_id = chat['title']
-            else:
-                user_id = self.model.users.get_user_label(user_id_item)
-            flags = self._get_flags(msg_proxy)
-            if user_id and flags:
-                # if not channel add space between name and flags
-                flags = f" {flags}"
-            label_elements = f"{msg_date} ", user_id, flags
-
-            msg = self._format_msg(
-                msg_proxy, width_limit=self.max_line_width
-            )
-            msg_lines = flatten([split_string_dwc(msg_line, self.max_line_width) for msg_line in msg.split("\n")])
-            needed_lines = len(msg_lines) + 1
-            elements = *label_elements, msg
+            formatter = self.message_formatter(MsgProxy(msg_item), self.model, is_selected_msg)
+            msg_lines = formatter.format(width=self.width)
+            needed_lines = len(msg_lines)
             lines_available -= needed_lines
             if lines_available < 0:
                 # If currently selected message is not visible on the screen, 
                 # then remove first collected item and inrease line_num
                 if msg_idx <= current_msg_idx:
+                    if len(collected_items) == 0:
+                        # If there are no collected items, then add current message
+                        collected_items.append(msg_lines)
+                        break
                     first_item = collected_items.pop(0)
-                    lines_available += first_item[2] + needed_lines
+                    lines_available += len(first_item) + needed_lines
                 else:
+                    selected_lines = []
                     if config.LATEST_MSG_ON_TOP:
-                        selected_lines = msg_lines[:abs(lines_available) - 1]
-                        selected_lines[len(selected_lines) - 1] = tail_ellipsis(selected_lines[len(selected_lines) - 1], self.max_line_width)
-                        elements = *label_elements, "\n".join(selected_lines)
+                        # Select only lines that fit in the available space and cut the tail
+                        selected_lines = msg_lines[:abs(lines_available)]
+                        # TODO: Add ellipsis to the tail
+                        # selected_lines[len(selected_lines) - 1] = tail_ellipsis(selected_lines[len(selected_lines) - 1], self.max_line_width)
                     else:
+                        # Select only lines that fit in the available space and cut the head
                         selected_lines_count = needed_lines - abs(lines_available)
                         if selected_lines_count > 0:
                             selected_lines = msg_lines[-selected_lines_count:]
-                            selected_lines[0] = head_ellipsis(selected_lines[0], self.max_line_width)
-                            elements = ("", "", "", "\n".join(selected_lines))
-                        else:
-                            elements = ("", "", "", "")
-                    if (elements[3] != ""):
-                        collected_items.append((elements, is_selected_msg, needed_lines))
+                            # TODO: Add ellipsis to the head
+                            # selected_lines[0] = head_ellipsis(selected_lines[0], self.max_line_width)
+                    if (len(selected_lines) > 0):
+                        collected_items.append(selected_lines)
                     break
-            collected_items.append((elements, is_selected_msg, needed_lines))
+            collected_items.append(msg_lines)
         return collected_items
 
     def draw(
         self,
         current_msg_idx: int,
         msgs: List[Tuple[int, Dict[str, Any]]],
-        min_msg_padding: int,
         chat: Dict[str, Any],
     ) -> None:
         self.win.erase()
-        msgs_to_draw = self._collect_msgs_to_draw(
-            current_msg_idx, msgs, min_msg_padding
-        )
-
-        if not msgs:
-            log.error("Can't collect message for drawing!")
-
+        
         # Draw title
-        self.win.addstr(0, 0, self._msg_title(chat), get_color(cyan, -1) | bold)
-        # Draw separator
-        self.win.addstr(1, 0, "-" * self.w, get_color(cyan, -1))
+        header_formatter = self.header_formatter(chat, self.model)
+        lines = header_formatter.format(self.w)
+        line_num = self.draw_lines(0, lines)
 
+        msgs_to_draw = self._collect_msgs_to_draw(current_msg_idx, msgs)
         if not config.LATEST_MSG_ON_TOP:
             msgs_to_draw = reversed(msgs_to_draw)
 
-        line_num = 2
-        for elements, selected, _ in msgs_to_draw:
-            column = 0
-            user = elements[1]
-            # Draw message label
-            for attr, elem in zip(
-                self._msg_attributes(selected, user), elements[0:3]
-            ):
-                if not elem:
-                    continue
-                self.win.addstr(line_num, column, elem, attr)
-                column += string_len_dwc(elem)
-            line_num += 1 if column > 0 else 0
-            # Draw message body
-            for msg_line in elements[3].split("\n"):
-                len = string_len_dwc(msg_line)
-                if len > self.max_line_width:
-                    line_parts = split_string_dwc(msg_line, self.max_line_width)
-                    for part in line_parts:
-                        self.win.addstr(line_num, self.first_column, part, get_color(white, -1))
-                        line_num += 1
-                else:
-                    self.win.addstr(line_num, self.first_column, msg_line, get_color(white, -1))
-                    line_num += 1
-
+        # Draw messages
+        for lines in msgs_to_draw:
+            line_num = self.draw_lines(line_num, lines)
         self._refresh()
-
-    def _msg_title(self, chat: Dict[str, Any]) -> str:
-        chat_type = get_chat_type(chat)
-        status = ""
-
-        if action_label := _get_action_label(self.model.users, chat):
-            status = action_label
-        elif chat_type == ChatType.chatTypePrivate:
-            status = self.model.users.get_status(chat["id"])
-        elif chat_type == ChatType.chatTypeBasicGroup:
-            if group := self.model.users.get_group_info(
-                chat["type"]["basic_group_id"]
-            ):
-                status = f"{group['member_count']} members"
-        elif chat_type == ChatType.chatTypeSupergroup:
-            if supergroup := self.model.users.get_supergroup_info(
-                chat["type"]["supergroup_id"]
-            ):
-                status = f"{supergroup['member_count']} members"
-        elif chat_type == ChatType.channel:
-            if supergroup := self.model.users.get_supergroup_info(
-                chat["type"]["supergroup_id"]
-            ):
-                status = f"{supergroup['member_count']} subscribers"
-
-        return f"{chat['title']}: {status}".center(self.w)[: self.w]
-
-    def _user_color(self, user: str, is_selected: bool) -> int:
-        return get_color(get_color_by_str(user), -1)
-
-    def _msg_attributes(self, is_selected: bool, user: str) -> Tuple[int, ...]:
-        attrs = (
-            get_color(cyan, -1),
-            get_color(get_color_by_str(user), -1),
-            get_color(yellow, -1),
-            get_color(white, -1),
-        )
-
-        if is_selected:
-            return tuple(attr | reverse for attr in attrs)
-        return attrs
-
-    def _parse_msg(self, msg: MsgProxy) -> str:
-        if msg.is_message:
-            return parse_content(msg, self.model.users)
-        log.debug("Unknown message type: %s", msg)
-        return "unknown msg type: " + str(msg["content"])
-
-
-def get_last_msg(
-    chat: Dict[str, Any], users: UserModel
-) -> Tuple[Optional[int], str]:
-    last_msg = chat.get("last_message")
-    if not last_msg:
-        return None, "<No messages yet>"
-    return (
-        last_msg["sender_id"].get("user_id"),
-        parse_content(MsgProxy(last_msg), users),
-    )
-
-
-def get_date(chat: Dict[str, Any]) -> str:
-    last_msg = chat.get("last_message")
-    if not last_msg:
-        return "<No date>"
-    dt = datetime.fromtimestamp(last_msg["date"])
-    date_fmt = "%d %b %y"
-    if datetime.today().date() == dt.date():
-        date_fmt = "%H:%M"
-    elif datetime.today().year == dt.year:
-        date_fmt = "%d %b"
-    return dt.strftime(date_fmt)
-
-
-def parse_content(msg: MsgProxy, users: UserModel) -> str:
-    if msg.is_text:
-        return msg.text_content #.replace("\n", "\n ")
-
-    content = msg["content"]
-    _type = content["@type"]
-
-    if _type == "messageBasicGroupChatCreate":
-        return f"[created the group \"{content['title']}\"]"
-    if _type == "messageChatAddMembers":
-        user_ids = content["member_user_ids"]
-        if user_ids[0] == msg.sender_id:
-            return "[joined the group]"
-        users_name = ", ".join(
-            users.get_user_label(user_id) for user_id in user_ids
-        )
-        return f"[added {users_name}]"
-    if _type == "messageChatDeleteMember":
-        user_id = content["user_id"]
-        if user_id == msg.sender_id:
-            return "[left the group]"
-        user_name = users.get_user_label(user_id)
-        return f"[removed {user_name}]"
-    if _type == "messageChatChangeTitle":
-        return f"[changed the group name to \"{content['title']}\"]"
-
-    if not msg.content_type:
-        # not implemented
-        return f"[{_type}]"
-
-    content_text = ""
-    if msg.is_poll:
-        content_text = f"\n {msg.poll_question}"
-        for option in msg.poll_options:
-            content_text += f"\n * {option['voter_count']} ({option['vote_percentage']}%) | {option['text']}"
-
-    fields = dict(
-        name=msg.file_name,
-        download=get_download(msg.local, msg.size),
-        size=msg.human_size,
-        duration=msg.duration,
-        listened=format_bool(msg.is_listened),
-        viewed=format_bool(msg.is_viewed),
-        animated=msg.is_animated,
-        emoji=msg.sticker_emoji,
-        closed=msg.is_closed_poll,
-    )
-    info = ", ".join(f"{k}={v}" for k, v in fields.items() if v is not None)
-
-    return f"[{msg.content_type}: {info}]{content_text}"
-
-
-def format_bool(value: Optional[bool]) -> Optional[str]:
-    if value is None:
-        return None
-    return "yes" if value else "no"
-
-
-def get_download(
-    local: Dict[str, Union[str, bool, int]], size: Optional[int]
-) -> Optional[str]:
-    if not size:
-        return None
-    elif local["is_downloading_completed"]:
-        return "yes"
-    elif local["is_downloading_active"]:
-        d = int(local["downloaded_size"])
-        percent = int(d * 100 / size)
-        return f"{percent}%"
-    return "no"
-
-
-def _get_action_label(users: UserModel, chat: Dict[str, Any]) -> Optional[str]:
-    actioner, action = users.get_user_action(chat["id"])
-    if actioner and action:
-        label = f"{action}..."
-        chat_type = get_chat_type(chat)
-        if chat_type and is_group(chat_type):
-            user_label = users.get_user_label(actioner)
-            label = f"{user_label} {label}"
-
-        return label
-
-    return None

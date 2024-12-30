@@ -30,18 +30,19 @@ Telegram terminal client.
 To use tg, you'll need to have the following installed:
 
 - [Python >= 3.12](https://www.python.org/downloads/)
-
-
-## Optional dependencies
-
-- [terminal-notifier](https://github.com/julienXX/terminal-notifier) - for Mac (used by default). You can change it to [dunst](https://github.com/dunst-project/dunst) for Linux or any other notifications program (see `NOTIFY_CMD` in configuration)
-- [ffmpeg](https://ffmpeg.org/) - to record voice msgs and upload videos.
-- [tdlib](https://tdlib.github.io/td/build.html?language=Python) - in case of incompatibility with built in package.
+- [TDLib](https://tdlib.github.io/td/build.html?language=Python)
   For macOS:
   ```sh
   brew install tdlib
   ```
   and then set in config `TDLIB_PATH`
+
+
+## Optional dependencies
+
+- [Noto Fonts](https://fonts.google.com/noto) - or any other font with emoji
+- [terminal-notifier](https://github.com/julienXX/terminal-notifier) - for Mac (used by default). You can change it to [dunst](https://github.com/dunst-project/dunst) for Linux or any other notifications program (see `NOTIFY_CMD` in configuration)
+- [ffmpeg](https://ffmpeg.org/) - to record voice msgs and upload videos.
 - `urlview` to choose urls when there is multiple in message, use `URL_VIEW` in config file to use another app (it should accept urls in stdin)
 - to open `stickers` and `animated` ones (thumbnail preview) you need to set in mailcap appropriate handler and have app which will open `webp` file:
   ```ini

@@ -70,7 +70,7 @@ class MsgProxy:
     @property
     def date(self) -> datetime:
         return datetime.fromtimestamp(self.msg["date"])
-
+    
     @property
     def is_message(self) -> bool:
         return self.type == "message"
@@ -242,7 +242,7 @@ class MsgProxy:
         return self.msg["sender_id"].get("user_id") or self.msg[
             "sender_id"
         ].get("chat_id")
-
+    
     @property
     def forward(self) -> Optional[Dict[str, Any]]:
         return self.msg.get("forward_info")
