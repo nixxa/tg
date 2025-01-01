@@ -44,10 +44,17 @@ class Model:
         return self.chats.id_by_index(self.current_chat)
 
     def get_current_chat_msg_idx(self) -> Optional[int]:
-        chat_id = self.chats.id_by_index(self.current_chat)
-        if chat_id is None:
+        current_chat_id = self.chats.id_by_index(self.current_chat)
+        if current_chat_id is None:
             return None
-        return self.msgs.current_msgs[chat_id]
+        current_chat = self.chats.chat_by_index(self.current_chat)
+        current_msg_indx = self.msgs.current_msgs[current_chat_id]
+        if current_msg_indx == 0:
+            unread_count = current_chat.get("unread_count", 0)
+            if unread_count > 0:
+                self.msgs.current_msgs[current_chat_id] = unread_count
+                current_msg_indx = unread_count
+        return current_msg_indx
 
     def fetch_msgs(
         self,
