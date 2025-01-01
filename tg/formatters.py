@@ -54,9 +54,10 @@ class MsgFormatter:
         if self.msg.forward is not None:
             flags.append("forwarded")
 
+        last_read_msg_id = self.chat["last_read_inbox_message_id"]
         if (
             not self.model.is_me(self.msg.sender_id)
-            and self.msg.msg_id > self.chat["last_read_inbox_message_id"]
+            and self.msg.msg_id > last_read_msg_id
         ):
             flags.append("new")
         elif (

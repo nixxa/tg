@@ -13,3 +13,4 @@ Makefile
 build/
 MANIFEST
 tg.egg-info/
+poetry.lock

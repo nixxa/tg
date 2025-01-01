@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 # note, that setting high values could lead to situations when long msgs will
 # be removed from the display in order to achive scroll threshold. this could
 # cause blan areas on the msg display screen
-MSGS_LEFT_SCROLL_THRESHOLD = 2
+MSGS_LEFT_SCROLL_THRESHOLD = 1
 REPLY_MSG_PREFIX = "# >"
 HandlerType = Callable[[Any], Optional[str]]
 
@@ -503,13 +503,20 @@ class Controller:
         chat = self.model.chats.chats[self.model.current_chat]
         return chat["permissions"]["can_send_basic_messages"]
 
-    def _open_msg(self, msg: MsgProxy, cmd: str = None) -> None:
+    def _open_msg(self, msg: MsgProxy, cmd: str = None, show_caption: bool = False) -> None:
         if msg.is_text:
-            with NamedTemporaryFile("w", suffix=".txt") as f:
-                f.write(msg.text_content)
-                f.flush()
-                with suspend(self.view) as s:
-                    s.open_file(f.name, cmd)
+            with suspend(self.view) as s:
+                s.run_with_input(
+                    config.VIEW_TEXT_CMD,
+                    msg.text_content,
+                )
+            return
+        if msg.caption != "" and show_caption:
+            with suspend(self.view) as s:
+                s.run_with_input(
+                    config.VIEW_TEXT_CMD,
+                    msg.caption,
+                )
             return
 
         path = msg.local_path
@@ -536,7 +543,13 @@ class Controller:
             )
         return self._open_msg(msg, cmd)
 
-    @bind(msg_handler, ["l", "^J"])
+    @bind(msg_handler, ["^J"])
+    def open_current_msg(self) -> None:
+        """Open msg or file with cmd in mailcap"""
+        msg = MsgProxy(self.model.current_msg)
+        self._open_msg(msg, show_caption=True)
+
+    @bind(msg_handler, ["l"])
     def open_current_msg(self) -> None:
         """Open msg or file with cmd in mailcap"""
         msg = MsgProxy(self.model.current_msg)
@@ -876,13 +889,14 @@ class Controller:
         current_msg_idx = self.model.get_current_chat_msg_idx()
         if current_msg_idx is None:
             return
+        # Load page starting from current msg index
         msgs = self.model.fetch_msgs(
             current_position=current_msg_idx,
-            page_size=self.view.msgs.h - 1,
+            page_size=self.view.msgs.h,
             msgs_left_scroll_threshold=MSGS_LEFT_SCROLL_THRESHOLD,
         )
         chat = self.model.chats.chats[self.model.current_chat]
-        self.view.msgs.draw(current_msg_idx, msgs, chat)
+        self.view.msgs.draw(msgs, chat)
 
     def notify_for_message(self, chat_id: int, msg: MsgProxy) -> None:
         # do not notify, if muted

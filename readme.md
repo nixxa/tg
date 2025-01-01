@@ -36,7 +36,11 @@ To use tg, you'll need to have the following installed:
   brew install tdlib
   ```
   and then set in config `TDLIB_PATH`
-
+- [Less](https://en.wikipedia.org/wiki/Less_(Unix))
+  For Arch Linux:
+  ```sh
+  sudo pacman -S less
+  ```
 
 ## Optional dependencies
 

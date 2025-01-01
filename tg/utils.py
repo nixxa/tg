@@ -82,14 +82,10 @@ def get_mailcap() -> Dict:
 
 def get_file_handler(file_path: str) -> str:
     mtype, _ = mimetypes.guess_type(file_path)
-    if not mtype:
-        return config.DEFAULT_OPEN.format(file_path=shlex.quote(file_path))
+    if mtype == "text/plain":
+        return f"{config.EDITOR} {shlex.quote(file_path)}"
 
-    caps = get_mailcap()
-    handler, view = mailcap.findmatch(caps, mtype, filename=shlex.quote(file_path))
-    if not handler:
-        return config.DEFAULT_OPEN.format(file_path=shlex.quote(file_path))
-    return handler
+    return config.DEFAULT_OPEN.format(file_path=shlex.quote(file_path))
 
 
 def parse_size(size: str) -> int:

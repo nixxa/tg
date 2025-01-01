@@ -49,11 +49,10 @@ class Model:
             return None
         current_chat = self.chats.chat_by_index(self.current_chat)
         current_msg_indx = self.msgs.current_msgs[current_chat_id]
-        if current_msg_indx == 0:
+        if current_msg_indx is None:
             unread_count = current_chat.get("unread_count", 0)
-            if unread_count > 0:
-                self.msgs.current_msgs[current_chat_id] = unread_count
-                current_msg_indx = unread_count
+            self.msgs.current_msgs[current_chat_id] = unread_count
+            current_msg_indx = unread_count
         return current_msg_indx
 
     def fetch_msgs(
@@ -65,11 +64,19 @@ class Model:
         chat_id = self.chats.id_by_index(self.current_chat)
         if chat_id is None:
             return []
-        msgs_left = page_size - 1 - current_position
-        offset = max(msgs_left_scroll_threshold - msgs_left, 0)
-        limit = offset + page_size
-
-        return self.msgs.fetch_msgs(chat_id, offset=offset, limit=limit)
+        offset = max(current_position - msgs_left_scroll_threshold, 0)
+        msgs = self.msgs.fetch_msgs(chat_id, offset=offset, limit=page_size)
+        return msgs
+        # As we are fetching messages from 'current_posiiton',
+        # so the current message index will be changed and neeed to be updated
+        # chat = self.chats.chat_by_index(self.current_chat)
+        # if last_read_msg_id := chat.get("last_read_inbox_message_id", None):
+        #     for last_read_msg_idx, msg in enumerate(msgs):
+        #         if msg["id"] == last_read_msg_id:
+        #             self.msgs.current_msgs[chat_id] = last_read_msg_idx
+        #             break
+        #     next(msgs, lambda msg: msg["id"] == last_read_msg_id)
+        #     self.msgs.current_msgs[chat_id] = last_read_msg_idx
 
     @property
     def current_msg(self) -> Dict[str, Any]:
@@ -129,9 +136,8 @@ class Model:
 
     def view_current_msg(self) -> None:
         msg = MsgProxy(self.current_msg)
-        msg_id = msg["id"]
         if chat_id := self.chats.id_by_index(self.current_chat):
-            self.tg.view_messages(chat_id, [msg_id])
+            self.tg.view_messages(chat_id, [msg.msg_id])
 
     def view_all_msgs(self) -> None:
         chat = self.chats.chats[self.current_chat]
@@ -186,9 +192,12 @@ class Model:
         c_id = msg["sender_id"].get("chat_id") or msg["sender_id"].get(
             "user_id"
         )
+        tg_result = self.tg.get_message_properties(chat_id, msg["id"])
+        tg_result.wait()
+        message_properties = tg_result.update
         if chat_id == c_id:
-            return msg["can_be_deleted_only_for_self"]
-        return msg["can_be_deleted_for_all_users"]
+            return message_properties.get("can_be_deleted_only_for_self", False)
+        return message_properties.get("can_be_deleted_for_all_users", False)
 
     def delete_msgs(self) -> bool:
         chat_id = self.chats.id_by_index(self.current_chat)
@@ -509,7 +518,7 @@ class MsgModel:
     def __init__(self, tg: Tdlib) -> None:
         self.tg = tg
         self.msgs: Dict[int, Dict[int, Dict]] = defaultdict(dict)
-        self.current_msgs: Dict[int, int] = defaultdict(int)
+        self.current_msgs: Dict[int, int] = defaultdict(lambda: None)
         self.not_found: Set[int] = set()
         self.msg_ids: Dict[int, List[int]] = defaultdict(list)
 
@@ -638,7 +647,7 @@ class MsgModel:
                 self.add_message(chat_id, msg)
 
         return [
-            (i, self.msgs[chat_id][msg_id])
+            (i + offset, self.msgs[chat_id][msg_id])
             for i, msg_id in enumerate(
                 self.msg_ids[chat_id][offset : offset + limit]
             )

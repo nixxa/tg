@@ -281,6 +281,7 @@ class MsgView(AbstractView):
     ) -> List[List[FormattedLine]]:
         collected_items: List[List[FormattedLine]] = []
         lines_available = self.h - self.header_formatter.height
+        offset = current_msg_idx
         for msg_idx, msg_item in msgs:
             is_selected_msg = current_msg_idx == msg_idx
             formatter = self.message_formatter(MsgProxy(msg_item), self.model, is_selected_msg)
@@ -288,15 +289,16 @@ class MsgView(AbstractView):
             needed_lines = len(msg_lines)
             lines_available -= needed_lines
             if lines_available < 0:
+                if msg_idx == current_msg_idx:
+                    selected_lines = msg_lines[:needed_lines+lines_available]
+                    collected_items.append(selected_lines)
+                    break
                 # If currently selected message is not visible on the screen, 
                 # then remove first collected item and inrease line_num
-                if msg_idx <= current_msg_idx:
-                    if len(collected_items) == 0:
-                        # If there are no collected items, then add current message
-                        collected_items.append(msg_lines)
-                        break
-                    first_item = collected_items.pop(0)
-                    lines_available += len(first_item) + needed_lines
+                if msg_idx < current_msg_idx:
+                    if len(collected_items) > 0:
+                        collected_items.pop(0)
+                    lines_available += needed_lines
                 else:
                     selected_lines = []
                     if config.LATEST_MSG_ON_TOP:
@@ -319,7 +321,6 @@ class MsgView(AbstractView):
 
     def draw(
         self,
-        current_msg_idx: int,
         msgs: List[Tuple[int, Dict[str, Any]]],
         chat: Dict[str, Any],
     ) -> None:
@@ -330,6 +331,7 @@ class MsgView(AbstractView):
         lines = header_formatter.format(self.w)
         line_num = self.draw_lines(0, lines)
 
+        current_msg_idx = self.model.get_current_chat_msg_idx()
         msgs_to_draw = self._collect_msgs_to_draw(current_msg_idx, msgs)
         if not config.LATEST_MSG_ON_TOP:
             msgs_to_draw = reversed(msgs_to_draw)

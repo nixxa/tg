@@ -425,6 +425,14 @@ class Tdlib(Telegram):
             "user_id": user_id,
         }
         return self._send_data(data)
+    
+    def get_message_properties(self, chat_id: int, message_id: int) -> AsyncResult:
+        data = {
+            "@type": "getMessageProperties",
+            "chat_id": chat_id,
+            "message_id": message_id,
+        }
+        return self._send_data(data)
 
 
 def get_chat_type(chat: Dict[str, Any]) -> Optional[ChatType]:
