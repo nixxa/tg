@@ -1,6 +1,7 @@
 import logging
 import os
 import shlex
+import curses
 from datetime import datetime
 from functools import partial, wraps
 from queue import Queue
@@ -268,21 +269,21 @@ class Controller:
         if self.model.jump_bottom():
             self.render_msgs()
 
-    @bind(msg_handler, ["j", "^B", "^N"], repeat_factor=True)
+    @bind(msg_handler, ["j", "^B", chr(curses.KEY_DOWN)], repeat_factor=True)
     def next_msg(self, repeat_factor: int = 1) -> None:
         if self.model.next_msg(repeat_factor):
             self.render_msgs()
 
-    @bind(msg_handler, ["J"])
+    @bind(msg_handler, ["J", chr(curses.KEY_NPAGE)])
     def jump_10_msgs_down(self) -> None:
         self.next_msg(10)
 
-    @bind(msg_handler, ["k", "^C", "^P"], repeat_factor=True)
+    @bind(msg_handler, ["k", "^C", chr(curses.KEY_UP)], repeat_factor=True)
     def prev_msg(self, repeat_factor: int = 1) -> None:
         if self.model.prev_msg(repeat_factor):
             self.render_msgs()
 
-    @bind(msg_handler, ["K"])
+    @bind(msg_handler, ["K", chr(curses.KEY_PPAGE)])
     def jump_10_msgs_up(self) -> None:
         self.prev_msg(10)
 
@@ -722,23 +723,23 @@ class Controller:
         if self.model.first_chat():
             self.render()
 
-    @bind(chat_handler, ["j", "^B", "^N"], repeat_factor=True)
+    @bind(chat_handler, ["j", "^B", chr(curses.KEY_DOWN)], repeat_factor=True)
     @bind(msg_handler, ["]"])
     def next_chat(self, repeat_factor: int = 1) -> None:
         if self.model.next_chat(repeat_factor):
             self.render()
 
-    @bind(chat_handler, ["k", "^C", "^P"], repeat_factor=True)
+    @bind(chat_handler, ["k", "^C", chr(curses.KEY_UP)], repeat_factor=True)
     @bind(msg_handler, ["["])
     def prev_chat(self, repeat_factor: int = 1) -> None:
         if self.model.prev_chat(repeat_factor):
             self.render()
 
-    @bind(chat_handler, ["J"])
+    @bind(chat_handler, ["J", chr(curses.KEY_NPAGE)])
     def jump_10_chats_down(self) -> None:
         self.next_chat(10)
 
-    @bind(chat_handler, ["K"])
+    @bind(chat_handler, ["K", chr(curses.KEY_PPAGE)])
     def jump_10_chats_up(self) -> None:
         self.prev_chat(10)
 

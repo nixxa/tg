@@ -93,6 +93,8 @@ class View:
             if ch == 208 or ch == 209:
                 second_ch = self.stdscr.getch()
                 key = (ch.to_bytes() + second_ch.to_bytes()).decode('utf-8')
+            elif ch in [ curses.KEY_UP, curses.KEY_DOWN, curses.KEY_PPAGE, curses.KEY_NPAGE ]:
+                key = chr(ch)                
             else:
                 log.info("raw ch without unctrl: %s", ch)
                 try:
