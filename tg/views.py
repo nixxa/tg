@@ -6,7 +6,7 @@ from _curses import window
 
 from tg import config
 from tg.colors import get_color, white
-from tg.formatters import ChatFormatter, FormattedLine, MessagesHeaderFormatter, MsgFormatter, HeaderFormatter
+from tg.formatters import ChatFormatter, FormattedLine, MessagesHeaderFormatter, MsgFormatter, HeaderFormatter, PrivateMsgFormatter
 from tg.models import Model
 from tg.msg import MsgProxy
 from tg.utils import num, string_len_dwc, enumerate2
@@ -255,9 +255,7 @@ class MsgView(AbstractView):
     def __init__(
         self,
         stdscr: window,
-        model: Model,
-        header_fmt: Optional[MessagesHeaderFormatter] = MessagesHeaderFormatter,
-        msg_fmt: Optional[MsgFormatter] = MsgFormatter,
+        model: Model
     ) -> None:
         super().__init__(Win(stdscr.subwin(0, 0, 0, 0)))
         self.model = model
@@ -266,8 +264,7 @@ class MsgView(AbstractView):
         self.w = 0
         self.x = 0
         self._refresh = self.win.refresh
-        self.header_formatter = header_fmt
-        self.message_formatter = msg_fmt
+        self.header_formatter = MessagesHeaderFormatter
 
     def resize(self, rows: int, cols: int, width: int) -> None:
         self.h = rows - 1
@@ -276,6 +273,12 @@ class MsgView(AbstractView):
         self.win.resize(self.h, self.w)
         self.win.mvwin(0, self.x)
     
+    def _create_msg_formatter(self, msg: Dict[str, Any], is_selected: bool):
+        chat = self.model.chats.chat_by_index(self.model.current_chat)
+        if chat['type']['@type'] == 'chatTypePrivate':
+            return PrivateMsgFormatter(MsgProxy(msg), self.model, is_selected)
+        return MsgFormatter(MsgProxy(msg), self.model, is_selected)
+
     def _collect_msgs_to_draw(
         self,
         current_msg_idx: int,
@@ -283,10 +286,9 @@ class MsgView(AbstractView):
     ) -> List[List[FormattedLine]]:
         collected_items: List[List[FormattedLine]] = []
         lines_available = self.h - self.header_formatter.height
-        offset = current_msg_idx
         for msg_idx, msg_item in msgs:
             is_selected_msg = current_msg_idx == msg_idx
-            formatter = self.message_formatter(MsgProxy(msg_item), self.model, is_selected_msg)
+            formatter = self._create_msg_formatter(msg_item, is_selected_msg)
             msg_lines = formatter.format(width=self.width)
             needed_lines = len(msg_lines)
             lines_available -= needed_lines

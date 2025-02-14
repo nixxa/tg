@@ -13,12 +13,14 @@ class FormattedText:
         self.text = text
         self.attributes = attributes
 
+
 class FormattedLine:
     def __init__(self, parts: List[FormattedText] = []):
         self.parts = parts
 
     def add_part(self, text: str, attributes: int) -> None:
         self.parts.append(FormattedText(text, attributes))
+
 
 class MsgFormatter:
     def __init__(self, msg: MsgProxy, model: Model, selected: bool) -> None:
@@ -33,7 +35,7 @@ class MsgFormatter:
 
     @property
     def time(self) -> str:
-        return self.msg.date.strftime("%H:%M:%S")
+        return " " + self.msg.date.strftime("%H:%M:%S")
     
     @property
     def sender(self) -> str:
@@ -42,7 +44,7 @@ class MsgFormatter:
             sender = self.chat['title']
         else:
             sender = self.model.users.get_user_label(self.msg.sender_id)
-        return sender
+        return " " + sender
     
     @property
     def flags(self) -> str:
@@ -77,7 +79,7 @@ class MsgFormatter:
         if self.msg.msg["edit_date"]:
             flags.append("edited")
 
-        return " ".join(config.MSG_FLAGS.get(flag, flag) for flag in flags) if flags else ""
+        return " " + " ".join(config.MSG_FLAGS.get(flag, flag) for flag in flags) if flags else ""
     
     @property
     def time_color(self) -> int:
@@ -98,15 +100,13 @@ class MsgFormatter:
     def _format_attributes(self, attributes: int) -> int:
         return attributes | reverse if self.selected else attributes
 
-    def format(self, width: int) -> str:
+    def format(self, width: int) -> List[FormattedLine]:
         msg = self._parse_msg()
         if caption := self.msg.caption:
             msg += "\n" + caption.replace("\n", " ")
         msg += self._format_url()
         if reply_to := self.msg.reply_msg_id:
-            msg = self._format_reply_msg(
-                self.msg.chat_id, msg, reply_to, width
-            )
+            msg = self._format_reply_msg(msg, reply_to, width)
         if reply_markup := self._format_reply_markup():
             msg += reply_markup
         
@@ -117,9 +117,9 @@ class MsgFormatter:
 
         result = []
         header_line = FormattedLine([])
-        header_line.add_part(f" {self.time}", self._format_attributes(self.time_color))
-        header_line.add_part(f" {self.sender}", self._format_attributes(self.sender_color))
-        header_line.add_part(f" {self.flags}", self._format_attributes(self.flags_color))
+        header_line.add_part(self.time, self._format_attributes(self.time_color))
+        header_line.add_part(self.sender, self._format_attributes(self.sender_color))
+        header_line.add_part(self.flags, self._format_attributes(self.flags_color))
         result.append(header_line)
 
         for line in msg_lines:
@@ -165,11 +165,15 @@ class MsgFormatter:
         return msg
     
     def _format_reply_msg(
-        self, chat_id: int, msg: str, reply_to: int, width_limit: int
+        self, original_msg: str, reply_to: Dict, width_limit: int
     ) -> str:
-        _msg = self.model.msgs.get_message(chat_id, reply_to)
+        chat_id = reply_to.get("chat_id", -1)
+        reply_to_msg_id = reply_to.get("message_id", -1)
+        if chat_id == -1 or reply_to_msg_id == -1:
+            return original_msg
+        _msg = self.model.msgs.get_message(chat_id, reply_to_msg_id)
         if not _msg:
-            return msg
+            return original_msg
         reply_msg = MsgProxy(_msg)
         if reply_msg_content := self._parse_msg(reply_msg):
             reply_sender = self.model.users.get_user_label(reply_msg.sender_id)
@@ -177,16 +181,16 @@ class MsgFormatter:
             reply_line = f">{sender_name} {reply_msg_content}"
             if len(reply_line) >= width_limit:
                 reply_line = f"{reply_line[:width_limit - 4]}..."
-            msg = f"{reply_line}\n{msg}"
-        return msg
+            return f"{reply_line}\n{original_msg}"
+        return original_msg
     
-    def _parse_msg(self) -> str:
-        if self.msg.is_message:
-            return self._parse_content()
+    def _parse_msg(self, msg: MsgProxy) -> str:
+        msg = self.msg if not msg else msg
+        if msg.is_message:
+            return self._parse_content(msg)
         return "unknown msg type: " + str(self.msg["content"])
     
-    def _parse_content(self) -> str:
-        msg = self.msg
+    def _parse_content(self, msg: MsgProxy) -> str:
         users = self.model.users
 
         if msg.is_text:
@@ -254,6 +258,51 @@ class MsgFormatter:
             percent = int(d * 100 / size)
             return f"{percent}%"
         return "no"
+
+
+class PrivateMsgFormatter(MsgFormatter):
+    @property
+    def dir(self) -> str:
+        return " \uf47d\uf47d" if self.msg.is_outgoing else " "
+
+    def format(self, width: int) -> List[FormattedLine]:
+        msg = self._parse_msg(self.msg)
+        
+        if reply_to := self.msg.msg.get("reply_to", None):
+            msg = self._format_reply_msg(msg, reply_to, width)
+
+        if links := self.msg.links_from_entities:
+            msg += links
+
+        msg_lines = flatten([split_string_dwc(msg_line, width) for msg_line in msg.split("\n")])
+        spacer_len = width - string_len_dwc(self.time) - string_len_dwc(self.dir) - string_len_dwc(self.flags)
+
+        if len(msg_lines) == 1 and len(msg_lines[0]) <= (width - string_len_dwc(self.time) - 1):
+            line = FormattedLine([])
+            line.add_part(self.time, self._format_attributes(self.time_color))
+            line.add_part(self.dir, self.time_color)
+            line.add_part(f" {msg_lines[0]}", self.text_color)
+
+            spacer_len = spacer_len - string_len_dwc(msg_lines[0]) - 1
+            if spacer_len > 0:
+                line.add_part(" " * spacer_len, self.text_color)
+                line.add_part(self.flags, self.flags_color)
+            return [line]
+
+        result = []
+        header_line = FormattedLine([])
+        header_line.add_part(self.time, self._format_attributes(self.time_color))
+        header_line.add_part(self.dir, self._format_attributes(self.time_color))
+        header_line.add_part(" " * spacer_len, self._format_attributes(self.text_color))
+        header_line.add_part(self.flags, self._format_attributes(self.flags_color))
+        result.append(header_line)
+
+        for line in msg_lines:
+            formatted_line = FormattedLine([FormattedText(line, self.text_color)])
+            result.append(formatted_line)
+
+        return result
+
 
 class ChatFormatter:
     height = 2
@@ -394,10 +443,11 @@ class ChatFormatter:
         last_msg = self.chat.get("last_message")
         if not last_msg:
             return None, "<No messages yet>"
-        formatter = MsgFormatter(MsgProxy(last_msg), self.model, False)
+        last_msg_proxy = MsgProxy(last_msg)
+        formatter = MsgFormatter(last_msg_proxy, self.model, False)
         return (
             last_msg["sender_id"].get("user_id"),
-            formatter._parse_content(),
+            formatter._parse_content(last_msg_proxy),
         )
 
 class HeaderFormatter:

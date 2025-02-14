@@ -139,6 +139,10 @@ class MsgProxy:
         doc["local"] = value
 
     @property
+    def is_outgoing(self) -> bool:
+        return self.msg.get("is_outgoing", False)
+    
+    @property
     def is_text(self) -> bool:
         return self.msg["content"]["@type"] == "messageText"
 
@@ -148,13 +152,11 @@ class MsgProxy:
 
     @property
     def poll_question(self) -> str:
-        assert self.is_poll
-        return self.msg["content"]["poll"]["question"]
+        return self.msg["content"]["poll"]["question"] if self.is_poll else None
 
     @property
     def poll_options(self) -> List[Dict]:
-        assert self.is_poll
-        return self.msg["content"]["poll"]["options"]
+        return self.msg["content"]["poll"]["options"] if self.is_poll else None
 
     @property
     def is_closed_poll(self) -> Optional[bool]:
@@ -164,6 +166,10 @@ class MsgProxy:
 
     @property
     def text_content(self) -> str:
+        if not "text" in self.msg["content"]:
+            return ""
+        if not "text" in self.msg["content"]["text"]:
+            return ""
         return self.msg["content"]["text"]["text"]
     
     @property
@@ -226,12 +232,11 @@ class MsgProxy:
 
     @property
     def reply_markup(self) -> Optional[Dict[str, Any]]:
-        return self.msg.get("reply_markup")
+        return self.msg.get("reply_markup", None)
 
     @property
     def reply_markup_rows(self) -> List[List[Dict[str, Any]]]:
-        assert self.reply_markup
-        return self.reply_markup.get("rows", [])
+        return self.reply_markup.get("rows", []) if self.reply_markup else None
 
     @property
     def chat_id(self) -> int:
