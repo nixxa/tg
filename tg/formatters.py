@@ -101,7 +101,7 @@ class MsgFormatter:
         return attributes | reverse if self.selected else attributes
 
     def format(self, width: int) -> List[FormattedLine]:
-        msg = self._parse_msg()
+        msg = self._parse_msg(self.msg)
         if caption := self.msg.caption:
             msg += "\n" + caption.replace("\n", " ")
         msg += self._format_url()
