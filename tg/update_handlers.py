@@ -68,6 +68,21 @@ def update_message_edited(
 
 @update_handler("updateNewMessage")
 def update_new_message(controller: Controller, update: Dict[str, Any]) -> None:
+    """
+    Handles a new message update.
+
+    This function processes a new message update by creating a message proxy,
+    adding the message to the controller's model, rendering messages if the
+    message is in the current chat, downloading the message if it meets certain
+    criteria, and notifying the controller of the new message.
+
+    Args:
+        controller (Controller): The controller instance managing the update.
+        update (Dict[str, Any]): The update dictionary containing message data.
+
+    Returns:
+        None
+    """
     msg = MsgProxy(update["message"])
     controller.model.msgs.add_message(msg.chat_id, msg.msg)
     current_chat_id = controller.model.current_chat_id

@@ -114,7 +114,10 @@ class Tdlib(Telegram):
         data = {
             "@type": "sendMessage",
             "chat_id": chat_id,
-            "reply_to_message_id": reply_to_message_id,
+            "reply_to": {
+                "@type": "inputMessageReplyToMessage",
+                "message_id": reply_to_message_id,
+            },
             "input_message_content": {
                 "@type": "inputMessageText",
                 "text": {"@type": "formattedText", "text": text},

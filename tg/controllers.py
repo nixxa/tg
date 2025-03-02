@@ -1,3 +1,17 @@
+"""
+This module contains the Controller class and related functions for managing interactions between the model, view, and Telegram library (Tdlib).
+Classes:
+    Controller: Manages interactions between the model, view, and Telegram library (Tdlib).
+Functions:
+    map_key_to_layout(key: str, lang_map: Dict[str, str]) -> str:
+        Maps a key to a layout based on the provided language map.
+    bind(binding: Dict[str, HandlerType], keys: List[str], repeat_factor: bool = False) -> Callable:
+        Binds handlers to given keys.
+    insert_replied_msg(msg: MsgProxy) -> str:
+        Inserts a replied message prefix to the given message.
+    strip_replied_msg(msg: str) -> str:
+        Strips the replied message prefix from the given message.
+"""
 import logging
 import os
 import shlex
@@ -24,7 +38,7 @@ from tg.utils import (
     notify,
     suspend,
 )
-from tg.views import View, ChatView
+from tg.views import View
 
 log = logging.getLogger(__name__)
 
@@ -82,11 +96,16 @@ def bind(
 
 
 class Controller:
+    """
+    Controller class to manage interactions between the model, view, and Telegram library (Tdlib).
+    """
+
     def __init__(self, model: Model, view: View, tg: Tdlib) -> None:
         self.model = model
         self.view = view
         self.queue: Queue = Queue()
         self.is_running = True
+        self.startup_time = datetime.now()
         self.tg = tg
         self.chat_size = 0.5
 
@@ -305,6 +324,7 @@ class Controller:
 
     @bind(msg_handler, ["R"])
     def reply_with_long_message(self) -> None:
+        """ Opens editor to reply with long message """
         if not self.can_send_msg():
             self.present_info("Can't send msg in this chat")
             return
@@ -319,7 +339,7 @@ class Controller:
             f.write(insert_replied_msg(msg))
             f.seek(0)
             s.call(config.LONG_MSG_CMD.format(file_path=shlex.quote(f.name)))
-            with open(f.name) as f:
+            with open(f.name, encoding='utf-8') as f:
                 if replied_msg := strip_replied_msg(f.read().strip()):
                     self.model.view_all_msgs()
                     self.tg.reply_message(chat_id, reply_to_msg, replied_msg)
@@ -329,6 +349,7 @@ class Controller:
 
     @bind(msg_handler, ["a", "i"])
     def write_short_msg(self) -> None:
+        """Activate in-place editor to write short message"""
         chat_id = self.model.chats.id_by_index(self.model.current_chat)
         if not self.can_send_msg() or chat_id is None:
             self.present_info("Can't send msg in this chat")
@@ -343,6 +364,7 @@ class Controller:
 
     @bind(msg_handler, ["A", "I"])
     def write_long_msg(self) -> None:
+        """Opens editor to write long message"""
         chat_id = self.model.chats.id_by_index(self.model.current_chat)
         if not self.can_send_msg() or chat_id is None:
             self.present_info("Can't send msg in this chat")
@@ -352,7 +374,7 @@ class Controller:
         ) as s:
             self.tg.send_chat_action(chat_id, ChatAction.chatActionTyping)
             s.call(config.LONG_MSG_CMD.format(file_path=shlex.quote(f.name)))
-            with open(f.name) as f:
+            with open(f.name, encoding='utf-8') as f:
                 if msg := f.read().strip():
                     self.model.send_message(text=msg)
                     self.present_info("Message sent")
@@ -364,6 +386,7 @@ class Controller:
 
     @bind(msg_handler, ["dd"])
     def delete_msgs(self) -> None:
+        """Delete selected messages"""
         is_deleted = self.model.delete_msgs()
         self.discard_selected_msgs()
         if not is_deleted:
@@ -380,7 +403,7 @@ class Controller:
         try:
             with NamedTemporaryFile("w") as f, suspend(self.view) as s:
                 s.call(config.FILE_PICKER_CMD.format(file_path=f.name))
-                with open(f.name) as f:
+                with open(f.name, encoding='utf-8') as f:
                     file_path = f.read().strip()
         except FileNotFoundError:
             pass
@@ -504,7 +527,7 @@ class Controller:
         chat = self.model.chats.chats[self.model.current_chat]
         return chat["permissions"]["can_send_basic_messages"]
 
-    def _open_msg(self, msg: MsgProxy, cmd: str = None, show_caption: bool = False) -> None:
+    def _open_msg_text(self, msg: MsgProxy) -> None:
         if msg.is_text:
             with suspend(self.view) as s:
                 s.run_with_input(
@@ -512,7 +535,7 @@ class Controller:
                     msg.text_content,
                 )
             return
-        if msg.caption != "" and show_caption:
+        if msg.caption != "":
             with suspend(self.view) as s:
                 s.run_with_input(
                     config.VIEW_TEXT_CMD,
@@ -520,6 +543,7 @@ class Controller:
                 )
             return
 
+    def _open_msg(self, msg: MsgProxy, cmd: str = None) -> None:
         path = msg.local_path
         if not path:
             self.present_info("File should be downloaded first")
@@ -545,10 +569,10 @@ class Controller:
         return self._open_msg(msg, cmd)
 
     @bind(msg_handler, ["^J"])
-    def open_current_msg(self) -> None:
+    def open_current_msg_text(self) -> None:
         """Open msg or file with cmd in mailcap"""
         msg = MsgProxy(self.model.current_msg)
-        self._open_msg(msg, show_caption=True)
+        self._open_msg_text(msg)
 
     @bind(msg_handler, ["l"])
     def open_current_msg(self) -> None:
@@ -573,7 +597,7 @@ class Controller:
             f.write(msg.text_content)
             f.flush()
             s.call(f"{config.EDITOR} {f.name}")
-            with open(f.name) as f:
+            with open(f.name, encoding='utf-8') as f:
                 if text := f.read().strip():
                     self.model.edit_message(text=text)
                     self.present_info("Message edited")
@@ -595,7 +619,7 @@ class Controller:
 
         with NamedTemporaryFile("r+") as tmp, suspend(self.view) as s:
             s.run_with_input(f"{cmd} > {tmp.name}", users_out)
-            with open(tmp.name) as f:
+            with open(tmp.name, encoding='utf-8') as f:
                 return [int(line.split()[0]) for line in f.readlines()]
 
     @bind(chat_handler, ["ns"])
@@ -708,30 +732,33 @@ class Controller:
 
     @bind(chat_handler, ["l", "^J", "^E"])
     def handle_msgs(self) -> Optional[str]:
-        rows, cols = self.view.stdscr.getmaxyx()
+        """Handle messages"""
         chat_size = 0 if self._is_narrow_mode() else 0.3
         rc = self.handle(msg_handler, chat_size)
         if rc == "QUIT":
             return rc
-        
+
         chat_size = 1 if self._is_narrow_mode() else 0.5
         self.chat_size = chat_size
         self.resize()
 
     @bind(chat_handler, ["g"])
     def top_chat(self) -> None:
+        """Go to top chat"""
         if self.model.first_chat():
             self.render()
 
     @bind(chat_handler, ["j", "^B", chr(curses.KEY_DOWN)], repeat_factor=True)
     @bind(msg_handler, ["]"])
     def next_chat(self, repeat_factor: int = 1) -> None:
+        """Go to next chat"""
         if self.model.next_chat(repeat_factor):
             self.render()
 
     @bind(chat_handler, ["k", "^C", chr(curses.KEY_UP)], repeat_factor=True)
     @bind(msg_handler, ["["])
     def prev_chat(self, repeat_factor: int = 1) -> None:
+        """Go to previous chat"""
         if self.model.prev_chat(repeat_factor):
             self.render()
 
@@ -834,7 +861,7 @@ class Controller:
         self._render()
 
     def _is_narrow_mode(self) -> bool:
-        rows, cols = self.view.stdscr.getmaxyx()
+        _, cols = self.view.stdscr.getmaxyx()
         return config.AUTO_NARROW_MODE and cols <= config.AUTO_NARROW_MODE_COLS
 
     def draw(self) -> None:
@@ -844,7 +871,7 @@ class Controller:
                 fun = self.queue.get()
                 fun()
             except Exception as e:
-                log.exception(f"Error happened in draw loop: {e}")
+                log.exception("Error happened in draw loop: %s", e)
 
     def present_error(self, msg: str) -> None:
         return self.update_status("Error", msg)
@@ -920,7 +947,8 @@ class Controller:
         name = f"{user['first_name']} {user['last_name']}"
 
         if text := msg.text_content if msg.is_text else msg.content_type:
-            notify(text, title=name)
+            if msg.date >= self.startup_time:
+                notify(text, title=name)
 
     def refresh_current_chat(self, current_chat_id: Optional[int]) -> None:
         if current_chat_id is None:

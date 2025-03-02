@@ -1,28 +1,46 @@
+"""
+This module contains classes for formatting messages and chats in the Telegram client.
+Classes:
+    FormattedText: Represents a piece of formatted text with attributes.
+    FormattedLine: Represents a line of formatted text composed of multiple FormattedText parts.
+    MsgFormatter: Formats messages for display, including time, sender, flags, and message content.
+    PrivateMsgFormatter: Specialized formatter for private 1:1 chat messages.
+    ChatFormatter: Formats chat information for display, including title, date, and last message.
+    HeaderFormatter: Formats a header with a title.
+    MessagesHeaderFormatter: Specialized formatter for the messages header in a chat.
+"""
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 from tg import config
 from tg.colors import get_color, cyan, yellow, white, magenta, bold, reverse, dim
-from tg.models import Model, UserModel
+from tg.models import Model
 from tg.msg import MsgProxy
 from tg.tdlib import ChatType, get_chat_type, is_group
 from tg.utils import flatten, get_color_by_str, split_string_dwc, string_len_dwc, truncate_to_len
 
 
 class FormattedText:
+    """Represents a piece of formatted text with attributes."""
     def __init__(self, text: str, attributes: int):
         self.text = text
         self.attributes = attributes
 
 
 class FormattedLine:
-    def __init__(self, parts: List[FormattedText] = []):
+    """Represents a line of formatted text composed of multiple FormattedText parts."""
+    def __init__(self, parts: Optional[List[FormattedText]] = None):
+        if parts is None:
+            parts = []
         self.parts = parts
 
     def add_part(self, text: str, attributes: int) -> None:
+        """Add a new part to the line."""
         self.parts.append(FormattedText(text, attributes))
 
 
 class MsgFormatter:
+    """Formats messages for display, including time, sender, flags, and message content."""
+
     def __init__(self, msg: MsgProxy, model: Model, selected: bool) -> None:
         self.msg = msg
         self.model = model
@@ -35,8 +53,9 @@ class MsgFormatter:
 
     @property
     def time(self) -> str:
+        """Return string showing a time of the message"""
         return " " + self.msg.date.strftime("%H:%M:%S")
-    
+
     @property
     def sender(self) -> str:
         sender = "<Unknown>"
@@ -45,7 +64,7 @@ class MsgFormatter:
         else:
             sender = self.model.users.get_user_label(self.msg.sender_id)
         return " " + sender
-    
+
     @property
     def flags(self) -> str:
         flags = []
@@ -80,23 +99,23 @@ class MsgFormatter:
             flags.append("edited")
 
         return " " + " ".join(config.MSG_FLAGS.get(flag, flag) for flag in flags) if flags else ""
-    
+
     @property
     def time_color(self) -> int:
         return get_color(cyan, -1)
-    
+
     @property
     def sender_color(self) -> int:
         return get_color(get_color_by_str(self.sender), -1)
-    
+
     @property
     def flags_color(self) -> int:
         return get_color(yellow, -1)
-    
+
     @property
     def text_color(self) -> int:
         return get_color(white, -1)
-    
+
     def _format_attributes(self, attributes: int) -> int:
         return attributes | reverse if self.selected else attributes
 
@@ -105,11 +124,11 @@ class MsgFormatter:
         if caption := self.msg.caption:
             msg += "\n" + caption.replace("\n", " ")
         msg += self._format_url()
-        if reply_to := self.msg.reply_msg_id:
+        if reply_to := self.msg.reply_to:
             msg = self._format_reply_msg(msg, reply_to, width)
         if reply_markup := self._format_reply_markup():
             msg += reply_markup
-        
+
         if links := self.msg.links_from_entities:
             msg += links
 
@@ -127,7 +146,7 @@ class MsgFormatter:
             result.append(formatted_line)
 
         return result
-    
+
     def _format_url(self) -> str:
         msg_proxy = self.msg
         if not msg_proxy.is_text or "web_page" not in msg_proxy.msg["content"]:
@@ -143,7 +162,7 @@ class MsgFormatter:
         if description:
             url += f"\n | {description}"
         return url
-    
+
     def _format_reply_markup(self) -> str:
         msg = ""
         msg_proxy = self.msg
@@ -163,7 +182,7 @@ class MsgFormatter:
                 msg += f"| {text} "
             msg += "|"
         return msg
-    
+
     def _format_reply_msg(
         self, original_msg: str, reply_to: Dict, width_limit: int
     ) -> str:
@@ -183,13 +202,13 @@ class MsgFormatter:
                 reply_line = f"{reply_line[:width_limit - 4]}..."
             return f"{reply_line}\n{original_msg}"
         return original_msg
-    
+
     def _parse_msg(self, msg: MsgProxy) -> str:
         msg = self.msg if not msg else msg
         if msg.is_message:
             return self._parse_content(msg)
         return "unknown msg type: " + str(self.msg["content"])
-    
+
     def _parse_content(self, msg: MsgProxy) -> str:
         users = self.model.users
 
@@ -242,13 +261,15 @@ class MsgFormatter:
         info = ", ".join(f"{k}={v}" for k, v in fields.items() if v is not None)
 
         return f"[{msg.content_type}: {info}]{content_text}"
-    
+
     def _format_bool(self, value: Optional[bool]) -> str:
         if value is None:
             return None
         return "yes" if value else "no"
-    
-    def _get_download(self, local: Dict[str, Union[str, bool, int]], size: Optional[int]) -> Optional[str]:
+
+    def _get_download(self,
+                      local: Dict[str, Union[str, bool, int]],
+                      size: Optional[int]) -> Optional[str]:
         if not size:
             return None
         elif local["is_downloading_completed"]:
@@ -261,14 +282,16 @@ class MsgFormatter:
 
 
 class PrivateMsgFormatter(MsgFormatter):
+    """Formatter for 1:1 chats"""
     @property
     def dir(self) -> str:
+        """Return string showing a direction of the message"""
         return " \uf47d\uf47d" if self.msg.is_outgoing else " "
 
     def format(self, width: int) -> List[FormattedLine]:
         msg = self._parse_msg(self.msg)
-        
-        if reply_to := self.msg.msg.get("reply_to", None):
+
+        if reply_to := self.msg.reply_to:
             msg = self._format_reply_msg(msg, reply_to, width)
 
         if links := self.msg.links_from_entities:

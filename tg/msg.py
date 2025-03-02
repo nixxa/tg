@@ -1,3 +1,8 @@
+"""
+This module provides a `MsgProxy` class for handling message objects with various content types.
+Classes:
+    MsgProxy: A proxy class for handling message objects with various content types.
+"""
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -8,6 +13,9 @@ log = logging.getLogger(__name__)
 
 
 class MsgProxy:
+    """
+    A proxy class for handling message objects with various content types.
+    """
 
     fields_mapping = {
         "messageDocument": ("document", "document"),
@@ -37,6 +45,15 @@ class MsgProxy:
 
     @classmethod
     def get_doc(cls, msg: Dict[str, Any], deep: int = 10) -> Dict[str, Any]:
+        """
+        Extracts and returns a document from a message dictionary based on a specified depth.
+        Args:
+            msg (Dict[str, Any]): The message dictionary containing the document.
+            deep (int, optional): The depth to which the fields should be traversed. Defaults to 10.
+        Returns:
+            Dict[str, Any]: The extracted document or an empty dictionary if the type is not supported or the document is not found.
+        """
+
         doc = msg["content"]
         _type = doc["@type"]
         fields = cls.fields_mapping.get(_type)
@@ -69,8 +86,15 @@ class MsgProxy:
 
     @property
     def date(self) -> datetime:
+        """
+        Returns the date and time of the message.
+        This method converts the Unix timestamp stored in the message's "date" field
+        to a datetime object.
+        Returns:
+            datetime: The date and time of the message.
+        """
         return datetime.fromtimestamp(self.msg["date"])
-    
+
     @property
     def is_message(self) -> bool:
         return self.type == "message"
@@ -227,8 +251,16 @@ class MsgProxy:
         return self.msg.get("can_be_edited", True)
 
     @property
+    def reply_to(self) -> Optional[Dict[str, Any]]:
+        """Return the message to which this message is a reply."""
+        return self.msg.get("reply_to", None)
+
+    @property
     def reply_msg_id(self) -> Optional[int]:
-        return self.msg.get("reply_to_message_id")
+        """Return the message ID to which this message is a reply."""
+        if self.reply_to:
+            return self.reply_to.get("message_id")
+        return None
 
     @property
     def reply_markup(self) -> Optional[Dict[str, Any]]:
@@ -247,7 +279,7 @@ class MsgProxy:
         return self.msg["sender_id"].get("user_id") or self.msg[
             "sender_id"
         ].get("chat_id")
-    
+
     @property
     def forward(self) -> Optional[Dict[str, Any]]:
         return self.msg.get("forward_info")
