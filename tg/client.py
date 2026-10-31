@@ -473,16 +473,21 @@ class Client:
         else:
             sender = {"chat_id": msg.chat_id}
         reply = None
+        header = getattr(msg, "reply_to", None)
         reply_id = getattr(msg, "reply_to_msg_id", None)
-        if reply_id:
-            header = getattr(msg, "reply_to", None)
+        quote = getattr(header, "quote_text", None) or "" if header else ""
+        if reply_id or quote:
             peer = (
                 getattr(header, "reply_to_peer_id", None) if header else None
             )
             reply_chat = (
                 utils.get_peer_id(peer) if peer is not None else msg.chat_id
             )
-            reply = {"chat_id": reply_chat, "message_id": reply_id}
+            reply = {
+                "chat_id": reply_chat,
+                "message_id": reply_id,
+                "quote": quote,
+            }
         text_message = content.get("@type") == "messageText"
         return {
             "@type": "message",

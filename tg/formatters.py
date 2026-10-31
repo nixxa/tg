@@ -155,8 +155,7 @@ class MsgFormatter:
             self.flags, self._format_attributes(self.flags_color)
         )
         result.append(header_line)
-        if reply := self._reply_line(width):
-            result.extend(self._plain_lines(reply, width))
+        result.extend(self._reply_lines(width))
         body = self._content_lines(width)
         if body and self._has_paragraph_gap(body):
             result.append(FormattedLine([]))
@@ -170,7 +169,9 @@ class MsgFormatter:
             attr = get_color(cyan, -1)
         elif "link" in styles:
             attr = get_color(cyan, -1) | underline
-        elif "quote" in styles or "spoiler" in styles:
+        elif "quote" in styles:
+            attr = get_color(cyan, -1)
+        elif "spoiler" in styles:
             attr = self.text_color | dim
         else:
             attr = self.text_color
@@ -213,11 +214,42 @@ class MsgFormatter:
     def _plain_lines(self, text: str, width: int) -> List[FormattedLine]:
         return self._styled_lines(text, [], width)
 
-    def _reply_line(self, width: int) -> str:
-        if not self.msg.reply_to:
+    def _reply_lines(self, width: int) -> List[FormattedLine]:
+        text = self._reply_preview()
+        if not text:
+            return []
+        attr = get_color(cyan, -1)
+        body_width = max(width - 3, 1)
+        lines = []
+        for parts in layout_message(text, [], body_width, markdown=False):
+            line = FormattedLine([])
+            line.add_part("> ", attr)
+            for chunk, _styles in parts:
+                if chunk:
+                    line.add_part(chunk, attr)
+            lines.append(line)
+        return lines
+
+    def _reply_preview(self) -> str:
+        reply_to = self.msg.reply_to or {}
+        if not reply_to:
             return ""
-        quoted = self._format_reply_msg("", self.msg.reply_to, width)
-        return quoted.strip("\n")
+        quote = preview_plain(reply_to.get("quote") or "")
+        chat_id = reply_to.get("chat_id", -1)
+        msg_id = reply_to.get("message_id", -1)
+        original = None
+        if chat_id != -1 and isinstance(msg_id, int) and msg_id != -1:
+            original = self.model.msgs.get_message(chat_id, msg_id)
+        if not original:
+            return quote or (
+                "reply" if isinstance(msg_id, int) and msg_id != -1 else ""
+            )
+        reply_msg = MsgProxy(original)
+        content = preview_plain(self._parse_msg(reply_msg))
+        sender = self.model.users.get_user_label(reply_msg.sender_id)
+        if sender and content:
+            return f"{sender}: {content}"
+        return content or sender or quote or "reply"
 
     def _trailing_text(self) -> str:
         parts = []
@@ -269,26 +301,6 @@ class MsgFormatter:
                 msg += f"| {text} "
             msg += "|"
         return msg
-
-    def _format_reply_msg(
-        self, original_msg: str, reply_to: Dict, width_limit: int
-    ) -> str:
-        chat_id = reply_to.get("chat_id", -1)
-        reply_to_msg_id = reply_to.get("message_id", -1)
-        if chat_id == -1 or reply_to_msg_id == -1:
-            return original_msg
-        _msg = self.model.msgs.get_message(chat_id, reply_to_msg_id)
-        if not _msg:
-            return original_msg
-        reply_msg = MsgProxy(_msg)
-        if reply_msg_content := self._parse_msg(reply_msg):
-            reply_sender = self.model.users.get_user_label(reply_msg.sender_id)
-            sender_name = f" {reply_sender}:" if reply_sender else ""
-            reply_line = f">{sender_name} {reply_msg_content}"
-            if len(reply_line) >= width_limit:
-                reply_line = f"{reply_line[:width_limit - 4]}..."
-            return f"{reply_line}\n{original_msg}"
-        return original_msg
 
     def _parse_msg(self, msg: MsgProxy) -> str:
         msg = self.msg if not msg else msg
@@ -381,15 +393,11 @@ class PrivateMsgFormatter(MsgFormatter):
     def format(self, width: int) -> List[FormattedLine]:
         body = self._content_lines(width)
         trailing = self._trailing_text()
-        reply = self._reply_line(width)
+        quote = self._reply_lines(width)
         if trailing:
             extra = self._plain_lines(trailing, width)
         else:
             extra = []
-        if reply:
-            quote = self._plain_lines(reply, width)
-        else:
-            quote = []
         one_line = (
             not quote
             and not extra

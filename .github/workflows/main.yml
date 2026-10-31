@@ -29,6 +29,10 @@ jobs:
         pip install poetry
         oetry config virtualenvs.create false
         poetry install --no-interaction --no-ansi
+    
+    - name: Run checks
+      run: |
+        ./github/check.sh
 
     # - name: build and deploy master image to ghcr.io
     #   # if: ${{ github.ref == 'refs/heads/master' }}

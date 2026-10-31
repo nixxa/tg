@@ -54,14 +54,17 @@ Line = List[Tuple[str, FrozenSet[str]]]
 
 
 def layout_message(
-    text: str, entities: Optional[List[Dict[str, Any]]], width: int
+    text: str,
+    entities: Optional[List[Dict[str, Any]]],
+    width: int,
+    markdown: bool = True,
 ) -> List[Line]:
     """Wrap text into display lines of styled pieces."""
     width = max(width, 1)
     text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     if not text:
         return []
-    runs = _runs(text, entities or [])
+    runs = _runs(text, entities or [], markdown)
     lines = _wrap(runs, width)
     return _collapse_blank_lines(lines)
 
@@ -122,10 +125,12 @@ def parse_markdown(text: str) -> List[Run]:
     return spans
 
 
-def _runs(text: str, entities: List[Dict[str, Any]]) -> List[Run]:
+def _runs(
+    text: str, entities: List[Dict[str, Any]], markdown: bool = True
+) -> List[Run]:
     if _has_formatting(entities):
         return _runs_from_entities(text, entities)
-    if looks_like_markdown(text):
+    if markdown and looks_like_markdown(text):
         return parse_markdown(text)
     return _runs_from_entities(text, entities)
 
