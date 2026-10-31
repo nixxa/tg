@@ -6,15 +6,15 @@ from functools import partial
 from types import FrameType
 
 from tg import config, update_handlers, utils
+from tg.client import Client
 from tg.controllers import Controller
 from tg.models import Model
-from tg.tdlib import Tdlib
 from tg.views import ChatView, MsgView, StatusView, View
 
 log = logging.getLogger(__name__)
 
 
-def run(tg: Tdlib, stdscr: window) -> None:
+def run(tg: Client, stdscr: window) -> None:
 
     # handle ctrl+c, to avoid interrupting tg when subprocess is called
     def interrupt_signal_handler(sig: int, frame: FrameType) -> None:
@@ -58,14 +58,11 @@ def main() -> None:
     parse_args()
     utils.cleanup_cache()
     utils.setup_log()
-    tg = Tdlib(
+    tg = Client(
         api_id=config.API_ID,
         api_hash=config.API_HASH,
         phone=config.PHONE,
-        database_encryption_key=config.ENC_KEY,
-        files_directory=config.FILES_DIR,
-        tdlib_verbosity=config.TDLIB_VERBOSITY,
-        library_path=config.TDLIB_PATH,
+        session_dir=config.FILES_DIR,
     )
     tg.login()
 

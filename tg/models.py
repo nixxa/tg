@@ -6,13 +6,12 @@ import time
 from collections import defaultdict, namedtuple
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from tg import config
+from tg.client import Client
 from tg.msg import MsgProxy
-from tg.tdlib import (
+from tg.types import (
     ChatAction,
     ChatType,
     SecretChatState,
-    Tdlib,
     UserStatus,
     UserType,
     get_chat_type,
@@ -23,7 +22,7 @@ log = logging.getLogger(__name__)
 
 
 class Model:
-    def __init__(self, tg: Tdlib) -> None:
+    def __init__(self, tg: Client) -> None:
         self.tg = tg
         self.chats = ChatModel(tg)
         self.msgs = MsgModel(tg)
@@ -37,7 +36,9 @@ class Model:
         return self.users.get_me()
 
     def is_me(self, user_id: int) -> bool:
-        return self.get_me()["id"] == user_id
+        if self.users.me:
+            return self.users.me.get("id") == user_id
+        return user_id == self.tg._me_id
 
     @property
     def current_chat_id(self) -> Optional[int]:
@@ -50,7 +51,9 @@ class Model:
         current_chat = self.chats.chat_by_index(self.current_chat)
         current_msg_indx = self.msgs.current_msgs[current_chat_id]
         if current_msg_indx is None:
-            unread_count = current_chat.get("unread_count", 0)
+            # A large unread count would otherwise request that many
+            # messages before the first paint.
+            unread_count = min(int(current_chat.get("unread_count") or 0), 30)
             self.msgs.current_msgs[current_chat_id] = unread_count
             current_msg_indx = unread_count
         return current_msg_indx
@@ -141,9 +144,10 @@ class Model:
 
     def view_all_msgs(self) -> None:
         chat = self.chats.chats[self.current_chat]
-        chat_id = chat["id"]
-        msg_id = chat["last_message"]["id"]
-        self.tg.view_messages(chat_id, [msg_id])
+        last_message = chat.get("last_message")
+        if not last_message:
+            return
+        self.tg.view_messages(chat["id"], [last_message["id"]])
 
     def next_msg(self, step: int = 1) -> bool:
         chat_id = self.chats.id_by_index(self.current_chat)
@@ -196,7 +200,9 @@ class Model:
         tg_result.wait()
         message_properties = tg_result.update
         if chat_id == c_id:
-            return message_properties.get("can_be_deleted_only_for_self", False)
+            return message_properties.get(
+                "can_be_deleted_only_for_self", False
+            )
         return message_properties.get("can_be_deleted_for_all_users", False)
 
     def delete_msgs(self) -> bool:
@@ -289,9 +295,9 @@ class Model:
         result = self.tg.get_basic_group_full_info(group_id)
         result.wait()
         chat_info = result.update
-        basic_info = self.tg.get_basic_group(group_id)
-        basic_info.wait()
-        basic_info = basic_info.update
+        basic = self.tg.get_basic_group(group_id)
+        basic.wait()
+        basic_info = basic.update
         return {
             chat["title"]: f"{basic_info['member_count']} members",
             "Info": chat_info["description"],
@@ -382,7 +388,7 @@ class Model:
 
 
 class ChatModel:
-    def __init__(self, tg: Tdlib) -> None:
+    def __init__(self, tg: Client) -> None:
         self.tg = tg
         self.chats: List[Dict[str, Any]] = []
         self.inactive_chats: Dict[int, Dict[str, Any]] = {}
@@ -404,7 +410,7 @@ class ChatModel:
         if index >= len(self.chats):
             return None
         return self.chats[index]["id"]
-    
+
     def chat_by_index(self, index: int) -> Optional[Dict[str, Any]]:
         if index >= len(self.chats):
             return None
@@ -419,33 +425,18 @@ class ChatModel:
         return self.chats[offset:limit]
 
     def _load_next_chats(self) -> None:
-        """
-        based on
-        https://github.com/tdlib/td/issues/56#issuecomment-364221408
-        """
         if self.have_full_chat_list:
             return None
-        offset_order = 2 ** 63 - 1
-        offset_chat_id = 0
-        if len(self.chats):
-            offset_chat_id = self.chats[-1]["id"]
-            offset_order = self.chats[-1]["order"]
-        result = self.tg.get_chats(
-            offset_chat_id=offset_chat_id, offset_order=offset_order
-        )
-
+        result = self.tg.get_chats(offset=len(self.chats), limit=30)
         result.wait()
         if result.error:
-            log.error(f"get chat ids error: {result.error_info}")
+            log.error("get chats error: %s", result.error_info)
             return None
 
-        chat_ids = result.update["chat_ids"]
-        if not chat_ids:
+        chats = result.update.get("chats") or []
+        if result.update.get("full") or not chats:
             self.have_full_chat_list = True
-            return
-
-        for chat_id in chat_ids:
-            chat = self.fetch_chat(chat_id)
+        for chat in chats:
             self.add_chat(chat)
 
     def fetch_chat(self, chat_id: int) -> Dict[str, Any]:
@@ -478,8 +469,7 @@ class ChatModel:
     def _sort_chats(self) -> None:
         self.chats = sorted(
             self.chats,
-            # recommended chat order, for more info see
-            # https://core.telegram.org/tdlib/getting-started#getting-the-lists-of-chats
+            # Pinned chats use a higher order so they stay above the rest.
             key=lambda it: (it["order"], it["id"]),
             reverse=True,
         )
@@ -515,7 +505,7 @@ class ChatModel:
 
 
 class MsgModel:
-    def __init__(self, tg: Tdlib) -> None:
+    def __init__(self, tg: Client) -> None:
         self.tg = tg
         self.msgs: Dict[int, Dict[int, Dict]] = defaultdict(dict)
         self.current_msgs: Dict[int, int] = defaultdict(lambda: None)
@@ -588,8 +578,6 @@ class MsgModel:
         elif msg_proxy.content_type == "recording":
             msg_proxy.is_viewed = True
         # TODO: start the TTL timer for self-destructing messages
-        # that is the last case to implement
-        # https://core.telegram.org/tdlib/docs/classtd_1_1td__api_1_1update_message_content_opened.html
 
     def update_msg(
         self, chat_id: int, msg_id: int, **fields: Dict[str, Any]
@@ -602,47 +590,26 @@ class MsgModel:
     def _fetch_msgs_until_limit(
         self, chat_id: int, offset: int = 0, limit: int = 10
     ) -> List[Dict[str, Any]]:
-        if self.msgs[chat_id]:
-            result = self.tg.get_chat_history(
-                chat_id,
-                from_message_id=self.msg_ids[chat_id][-1],
-                limit=len(self.msg_ids[chat_id]) + limit,
-            )
-        else:
-            result = self.tg.get_chat_history(
-                chat_id,
-                offset=len(self.msg_ids[chat_id]),
-                limit=len(self.msg_ids[chat_id]) + limit,
-            )
+        del offset
+        from_message_id = 0
+        if self.msg_ids[chat_id]:
+            from_message_id = self.msg_ids[chat_id][-1]
+        result = self.tg.get_chat_history(
+            chat_id,
+            from_message_id=from_message_id,
+            limit=min(max(limit, 1), 50),
+        )
         result.wait()
-        if not result or not result.update["messages"]:
+        if result.error or not result.update:
             return []
-
-        messages = result.update["messages"]
-
-        # tdlib could doesn't guarantee number of messages, so we need to
-        # send another request on demand
-        # see https://github.com/tdlib/td/issues/168
-        for i in range(3):
-            if len(messages) >= limit + offset:
-                break
-            result = self.tg.get_chat_history(
-                chat_id,
-                from_message_id=messages[-1]["id"],
-                limit=len(self.msg_ids[chat_id]) + limit,
-            )
-            result.wait()
-            messages += result.update["messages"]
-
-        return messages
+        messages = result.update.get("messages") or []
+        return [msg for msg in messages if msg["id"] not in self.msgs[chat_id]]
 
     def fetch_msgs(
         self, chat_id: int, offset: int = 0, limit: int = 10
     ) -> List[Tuple[int, Dict[str, Any]]]:
         if offset + limit > len(self.msg_ids[chat_id]):
-            msgs = self._fetch_msgs_until_limit(
-                chat_id, offset, offset + limit
-            )
+            msgs = self._fetch_msgs_until_limit(chat_id, offset, limit)
             for msg in msgs:
                 self.add_message(chat_id, msg)
 
@@ -686,7 +653,7 @@ class UserModel:
         "userTypeRegular": "regular",
     }
 
-    def __init__(self, tg: Tdlib) -> None:
+    def __init__(self, tg: Client) -> None:
         self.tg = tg
         self.me: Dict[str, Any] = {}
         self.users: Dict[int, Dict] = {}
@@ -823,16 +790,24 @@ class UserModel:
     def get_group_info(self, group_id: int) -> Optional[Dict[str, Any]]:
         if group_id in self.groups:
             return self.groups[group_id]
-        self.tg.get_basic_group(group_id)
-        return None
+        result = self.tg.get_basic_group(group_id)
+        result.wait()
+        if result.error or not result.update:
+            return None
+        self.groups[group_id] = result.update
+        return result.update
 
     def get_supergroup_info(
         self, supergroup_id: int
     ) -> Optional[Dict[str, Any]]:
         if supergroup_id in self.supergroups:
             return self.supergroups[supergroup_id]
-        self.tg.get_supergroup(supergroup_id)
-        return None
+        result = self.tg.get_supergroup(supergroup_id)
+        result.wait()
+        if result.error or not result.update:
+            return None
+        self.supergroups[supergroup_id] = result.update
+        return result.update
 
     def get_contacts(self) -> Optional[Dict[str, Any]]:
         if self.contacts:

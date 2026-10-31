@@ -118,14 +118,17 @@ class MsgProxy:
         if self.content_type not in ("audio", "voice", "video", "recording"):
             return None
         doc = self.get_doc(self.msg, deep=1)
-        return utils.humanize_duration(doc["duration"])
+        duration = doc.get("duration")
+        if duration is None:
+            return None
+        return utils.humanize_duration(duration)
 
     @property
     def file_name(self) -> Optional[str]:
         if self.content_type not in ("audio", "document", "video"):
             return None
         doc = self.get_doc(self.msg, deep=1)
-        return doc["file_name"]
+        return doc.get("file_name")
 
     @property
     def file_id(self) -> Optional[int]:
@@ -148,7 +151,7 @@ class MsgProxy:
         if self.content_type is None:
             return None
         doc = self.get_doc(self.msg)
-        return doc["local"]["path"]
+        return (doc.get("local") or {}).get("path")
 
     @property
     def local(self) -> Dict:
@@ -218,7 +221,7 @@ class MsgProxy:
     @property
     def is_downloaded(self) -> bool:
         doc = self.get_doc(self.msg)
-        return doc["local"]["is_downloading_completed"]
+        return bool((doc.get("local") or {}).get("is_downloading_completed"))
 
     @property
     def is_listened(self) -> Optional[bool]:

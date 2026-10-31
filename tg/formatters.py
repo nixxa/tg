@@ -9,18 +9,36 @@ Classes:
     HeaderFormatter: Formats a header with a title.
     MessagesHeaderFormatter: Specialized formatter for the messages header in a chat.
 """
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
+
 from tg import config
-from tg.colors import get_color, cyan, yellow, white, magenta, bold, reverse, dim
+from tg.colors import (
+    bold,
+    cyan,
+    dim,
+    get_color,
+    magenta,
+    reverse,
+    white,
+    yellow,
+)
 from tg.models import Model
 from tg.msg import MsgProxy
-from tg.tdlib import ChatType, get_chat_type, is_group
-from tg.utils import flatten, get_color_by_str, split_string_dwc, string_len_dwc, truncate_to_len
+from tg.types import ChatType, get_chat_type, is_group
+from tg.utils import (
+    flatten,
+    get_color_by_str,
+    split_string_dwc,
+    string_len_dwc,
+    truncate_to_len,
+)
 
 
 class FormattedText:
     """Represents a piece of formatted text with attributes."""
+
     def __init__(self, text: str, attributes: int):
         self.text = text
         self.attributes = attributes
@@ -28,6 +46,7 @@ class FormattedText:
 
 class FormattedLine:
     """Represents a line of formatted text composed of multiple FormattedText parts."""
+
     def __init__(self, parts: Optional[List[FormattedText]] = None):
         if parts is None:
             parts = []
@@ -59,8 +78,11 @@ class MsgFormatter:
     @property
     def sender(self) -> str:
         sender = "<Unknown>"
-        if 'is_channel' in self.chat['type'] and self.chat['type']['is_channel']:
-            sender = self.chat['title']
+        if (
+            "is_channel" in self.chat["type"]
+            and self.chat["type"]["is_channel"]
+        ):
+            sender = self.chat["title"]
         else:
             sender = self.model.users.get_user_label(self.msg.sender_id)
         return " " + sender
@@ -98,7 +120,11 @@ class MsgFormatter:
         if self.msg.msg["edit_date"]:
             flags.append("edited")
 
-        return " " + " ".join(config.MSG_FLAGS.get(flag, flag) for flag in flags) if flags else ""
+        return (
+            " " + " ".join(config.MSG_FLAGS.get(flag, flag) for flag in flags)
+            if flags
+            else ""
+        )
 
     @property
     def time_color(self) -> int:
@@ -132,17 +158,27 @@ class MsgFormatter:
         if links := self.msg.links_from_entities:
             msg += links
 
-        msg_lines = flatten([split_string_dwc(msg_line, width) for msg_line in msg.split("\n")])
+        msg_lines = flatten(
+            [split_string_dwc(msg_line, width) for msg_line in msg.split("\n")]
+        )
 
         result = []
         header_line = FormattedLine([])
-        header_line.add_part(self.time, self._format_attributes(self.time_color))
-        header_line.add_part(self.sender, self._format_attributes(self.sender_color))
-        header_line.add_part(self.flags, self._format_attributes(self.flags_color))
+        header_line.add_part(
+            self.time, self._format_attributes(self.time_color)
+        )
+        header_line.add_part(
+            self.sender, self._format_attributes(self.sender_color)
+        )
+        header_line.add_part(
+            self.flags, self._format_attributes(self.flags_color)
+        )
         result.append(header_line)
 
         for line in msg_lines:
-            formatted_line = FormattedLine([FormattedText(line, self.text_color)])
+            formatted_line = FormattedLine(
+                [FormattedText(line, self.text_color)]
+            )
             result.append(formatted_line)
 
         return result
@@ -258,7 +294,9 @@ class MsgFormatter:
             emoji=msg.sticker_emoji,
             closed=msg.is_closed_poll,
         )
-        info = ", ".join(f"{k}={v}" for k, v in fields.items() if v is not None)
+        info = ", ".join(
+            f"{k}={v}" for k, v in fields.items() if v is not None
+        )
 
         return f"[{msg.content_type}: {info}]{content_text}"
 
@@ -267,9 +305,9 @@ class MsgFormatter:
             return None
         return "yes" if value else "no"
 
-    def _get_download(self,
-                      local: Dict[str, Union[str, bool, int]],
-                      size: Optional[int]) -> Optional[str]:
+    def _get_download(
+        self, local: Dict[str, Union[str, bool, int]], size: Optional[int]
+    ) -> Optional[str]:
         if not size:
             return None
         elif local["is_downloading_completed"]:
@@ -283,6 +321,7 @@ class MsgFormatter:
 
 class PrivateMsgFormatter(MsgFormatter):
     """Formatter for 1:1 chats"""
+
     @property
     def dir(self) -> str:
         """Return string showing a direction of the message"""
@@ -297,10 +336,19 @@ class PrivateMsgFormatter(MsgFormatter):
         if links := self.msg.links_from_entities:
             msg += links
 
-        msg_lines = flatten([split_string_dwc(msg_line, width) for msg_line in msg.split("\n")])
-        spacer_len = width - string_len_dwc(self.time) - string_len_dwc(self.dir) - string_len_dwc(self.flags)
+        msg_lines = flatten(
+            [split_string_dwc(msg_line, width) for msg_line in msg.split("\n")]
+        )
+        spacer_len = (
+            width
+            - string_len_dwc(self.time)
+            - string_len_dwc(self.dir)
+            - string_len_dwc(self.flags)
+        )
 
-        if len(msg_lines) == 1 and len(msg_lines[0]) <= (width - string_len_dwc(self.time) - 1):
+        if len(msg_lines) == 1 and len(msg_lines[0]) <= (
+            width - string_len_dwc(self.time) - 1
+        ):
             line = FormattedLine([])
             line.add_part(self.time, self._format_attributes(self.time_color))
             line.add_part(self.dir, self.time_color)
@@ -314,14 +362,24 @@ class PrivateMsgFormatter(MsgFormatter):
 
         result = []
         header_line = FormattedLine([])
-        header_line.add_part(self.time, self._format_attributes(self.time_color))
-        header_line.add_part(self.dir, self._format_attributes(self.time_color))
-        header_line.add_part(" " * spacer_len, self._format_attributes(self.text_color))
-        header_line.add_part(self.flags, self._format_attributes(self.flags_color))
+        header_line.add_part(
+            self.time, self._format_attributes(self.time_color)
+        )
+        header_line.add_part(
+            self.dir, self._format_attributes(self.time_color)
+        )
+        header_line.add_part(
+            " " * spacer_len, self._format_attributes(self.text_color)
+        )
+        header_line.add_part(
+            self.flags, self._format_attributes(self.flags_color)
+        )
         result.append(header_line)
 
         for line in msg_lines:
-            formatted_line = FormattedLine([FormattedText(line, self.text_color)])
+            formatted_line = FormattedLine(
+                [FormattedText(line, self.text_color)]
+            )
             result.append(formatted_line)
 
         return result
@@ -330,7 +388,9 @@ class PrivateMsgFormatter(MsgFormatter):
 class ChatFormatter:
     height = 2
 
-    def __init__(self, chat: Dict[str, Any], model: Model, selected: bool) -> None:
+    def __init__(
+        self, chat: Dict[str, Any], model: Model, selected: bool
+    ) -> None:
         self.chat = chat
         self.model = model
         self.selected = selected
@@ -353,22 +413,26 @@ class ChatFormatter:
     def date_color(self) -> int:
         color = get_color(cyan, -1) | dim
         return color | reverse if self.selected else color
-    
+
     @property
     def flags_color(self) -> int:
         color = get_color(magenta, -1)
         return color | reverse if self.selected else color
-    
+
     @property
     def title_color(self) -> int:
-        color = get_color(cyan, -1) if not config.USE_CHAT_RANDOM_COLORS else get_color(get_color_by_str(self.title), -1)
+        color = (
+            get_color(cyan, -1)
+            if not config.USE_CHAT_RANDOM_COLORS
+            else get_color(get_color_by_str(self.title), -1)
+        )
         return color | reverse if self.selected else color
 
     @property
     def subtitle_color(self) -> int:
         color = get_color(white, -1)
         return color | dim
-    
+
     def sender_color(self, sender: str) -> int:
         color = get_color(get_color_by_str(sender), -1)
         return color | dim
@@ -378,7 +442,13 @@ class ChatFormatter:
         sender = f" {last_msg_sender} " if last_msg_sender else ""
 
         flags = self._get_flags()
-        spacer_len = width - string_len_dwc(self.date) - string_len_dwc(self.title) - string_len_dwc(flags) - 3
+        spacer_len = (
+            width
+            - string_len_dwc(self.date)
+            - string_len_dwc(self.title)
+            - string_len_dwc(flags)
+            - 3
+        )
 
         first_line = FormattedLine([])
         first_line.add_part(f" {self.date}", self.date_color)
@@ -389,10 +459,13 @@ class ChatFormatter:
         second_line = FormattedLine([])
         second_line.add_part(" " * 7, self.subtitle_color)
         second_line.add_part(sender, self.sender_color(sender))
-        second_line.add_part(truncate_to_len(last_msg, width - string_len_dwc(sender) - 10), self.subtitle_color)
+        second_line.add_part(
+            truncate_to_len(last_msg, width - string_len_dwc(sender) - 10),
+            self.subtitle_color,
+        )
 
         return [first_line, second_line]
-    
+
     def _get_flags(self) -> str:
         flags = []
 
@@ -439,7 +512,7 @@ class ChatFormatter:
         if label:
             return f" {label}"
         return label
-        
+
     def _get_action_label(self) -> Optional[str]:
         actioner, action = self.model.users.get_user_action(self.chat["id"])
         if actioner and action:
@@ -450,7 +523,7 @@ class ChatFormatter:
                 label = f"{user_label} {label}"
             return label
         return None
-    
+
     def _get_last_msg_data(self) -> Tuple[Optional[str], Optional[str]]:
         user, last_msg = self._get_last_msg()
         last_msg = last_msg.replace("\n", " ")
@@ -473,28 +546,36 @@ class ChatFormatter:
             formatter._parse_content(last_msg_proxy),
         )
 
+
 class HeaderFormatter:
     def __init__(self, title: str):
         self.text = title
 
     def format(self, width: int) -> List[FormattedLine]:
         lines = []
-        lines.append(FormattedLine([FormattedText(self.text, get_color(cyan, -1) | bold)]))
-        lines.append(FormattedLine([FormattedText("-" * width, get_color(cyan, -1))]))
+        lines.append(
+            FormattedLine(
+                [FormattedText(self.text, get_color(cyan, -1) | bold)]
+            )
+        )
+        lines.append(
+            FormattedLine([FormattedText("-" * width, get_color(cyan, -1))])
+        )
         return lines
+
 
 class MessagesHeaderFormatter(HeaderFormatter):
     height = 2
-    
+
     def __init__(self, chat: Dict[str, Any], model: Model):
         super().__init__("Messages")
         self.chat = chat
         self.model = model
-    
+
     def format(self, width: int) -> List[FormattedLine]:
         self.text = self._msg_title(width)
         return super().format(width)
-    
+
     def _msg_title(self, width: int) -> str:
         chat_type = get_chat_type(self.chat)
         status = ""
@@ -519,8 +600,8 @@ class MessagesHeaderFormatter(HeaderFormatter):
             ):
                 status = f"{supergroup['member_count']} subscribers"
 
-        return f"{self.chat['title']}: {status}".center(width)[: width]
-    
+        return f"{self.chat['title']}: {status}".center(width)[:width]
+
     def _get_action_label(self) -> Optional[str]:
         actioner, action = self.model.users.get_user_action(self.chat["id"])
         if actioner and action:

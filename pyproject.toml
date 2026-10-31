@@ -2,16 +2,17 @@
 name = "tg"
 version = "0.19.0"
 description = "Terminal Telegram client"
-authors = ["Paul Nameless <reacsdas@gmail.com>"]
+authors = ["Igor Goyda <igor.goida@gmail.com>", "Paul Nameless <reacsdas@gmail.com>"]
 license = "Unlicense"
 packages = [{ include = "tg"}]
 readme = "readme.md"
-homepage = "https://github.com/paul-nameless/tg"
-repository = "https://github.com/paul-nameless/tg"
+homepage = "https://github.com/nixxa/tg"
+repository = "https://github.com/nixxa/tg"
 
 [tool.poetry.dependencies]
-python = "^3.12"
-python-telegram = "^0.19.0"
+python = "^3.14"
+telethon = "^1.45.0"
+telethon-secret-chat = "^0.2.4"
 
 [tool.poetry.dev-dependencies]
 black = "^24.10.0"

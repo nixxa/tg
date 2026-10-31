@@ -1,6 +1,7 @@
 .mypy_cache/
 venv/
 .venv/
+.python/
 __pycache__
 .env
 dist

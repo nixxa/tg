@@ -2,7 +2,11 @@ import base64
 import curses
 import hashlib
 import logging
-import mailcap
+
+try:
+    import mailcap
+except ImportError:  # removed from the standard library in Python 3.13
+    mailcap = None
 import math
 import mimetypes
 import os
@@ -22,7 +26,7 @@ from typing import Any, Dict, Optional, Tuple, Type
 from tg import config
 
 log = logging.getLogger(__name__)
-units = {"B": 1, "KB": 10 ** 3, "MB": 10 ** 6, "GB": 10 ** 9, "TB": 10 ** 12}
+units = {"B": 1, "KB": 10**3, "MB": 10**6, "GB": 10**9, "TB": 10**12}
 
 
 class LogWriter:
@@ -59,7 +63,7 @@ def setup_log() -> None:
         handlers=handlers,
     )
     logging.getLogger().setLevel(config.LOG_LEVEL)
-    #sys.stderr = LogWriter(log.error)  # type: ignore
+    # sys.stderr = LogWriter(log.error)  # type: ignore
     sys.stderr = log.error
     logging.captureWarnings(True)
 
@@ -74,6 +78,8 @@ def get_mime(file_path: str) -> str:
 
 
 def get_mailcap() -> Dict:
+    if mailcap is None:
+        return {}
     if config.MAILCAP_FILE:
         with open(config.MAILCAP_FILE) as f:
             return mailcap.readmailcapfile(f)  # type: ignore
@@ -197,9 +203,11 @@ def flatten(source: list[Any]) -> list[Any]:
             result.append(item)
     return result
 
+
 def string_len_dwc(string: str) -> int:
     """Returns string len including count for double width characters"""
     return sum(1 + (unicodedata.east_asian_width(c) in "WF") for c in string)
+
 
 def split_string_dwc(string: str, width: int) -> list[str]:
     """Split string into lines with width including double width characters"""
@@ -216,6 +224,7 @@ def split_string_dwc(string: str, width: int) -> list[str]:
     if cur_line:
         lines.append(cur_line)
     return lines
+
 
 def truncate_to_len(string: str, width: int) -> str:
     real_len = string_len_dwc(string)
@@ -343,18 +352,25 @@ def cleanup_cache() -> None:
     cmd = f"find {files_path} -type f -mtime +{config.KEEP_MEDIA} -delete"
     subprocess.Popen(cmd, shell=True)
 
+
 def enumerate2(xs, start=0, step=1):
     for x in xs:
         yield (start, x)
         start += step
 
-def tail_ellipsis(string: str, max_width: int, replacement: str = "...") -> str:
+
+def tail_ellipsis(
+    string: str, max_width: int, replacement: str = "..."
+) -> str:
     diff = max_width - len(string)
     if diff <= 3:
         return string[:-diff] + replacement
     return string + replacement
 
-def head_ellipsis(string: str, max_width: int, replacement: str = "...") -> str:
+
+def head_ellipsis(
+    string: str, max_width: int, replacement: str = "..."
+) -> str:
     diff = max_width - len(string)
     if diff <= 3:
         return replacement + string[diff:]

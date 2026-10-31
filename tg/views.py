@@ -243,12 +243,18 @@ class ChatView(AbstractView):
         if current >= limit:
             offset = current - limit + 1
 
-        for line_num, chat in enumerate2(chats[offset:limit+offset], header_height, self.chat_formatter.height):
-            is_selected = line_num == (current - offset) * self.chat_formatter.height + header_height
-            formatter = self.chat_formatter(chat, self.model, is_selected)
-            lines = formatter.format(width)
-            line_num = self.draw_lines(line_num, lines)
-        self._refresh()
+        try:
+            for line_num, chat in enumerate2(chats[offset:limit+offset], header_height, self.chat_formatter.height):
+                is_selected = line_num == (current - offset) * self.chat_formatter.height + header_height
+                formatter = self.chat_formatter(chat, self.model, is_selected)
+                try:
+                    lines = formatter.format(width)
+                except Exception:
+                    log.exception("Failed to format chat %s", chat.get("id"))
+                    continue
+                line_num = self.draw_lines(line_num, lines)
+        finally:
+            self._refresh()
 
 
 class MsgView(AbstractView):
@@ -275,7 +281,7 @@ class MsgView(AbstractView):
     
     def _create_msg_formatter(self, msg: Dict[str, Any], is_selected: bool):
         chat = self.model.chats.chat_by_index(self.model.current_chat)
-        if chat['type']['@type'] == 'chatTypePrivate':
+        if chat['type']['@type'] in ('chatTypePrivate', 'chatTypeSecret'):
             return PrivateMsgFormatter(MsgProxy(msg), self.model, is_selected)
         return MsgFormatter(MsgProxy(msg), self.model, is_selected)
 
@@ -335,12 +341,13 @@ class MsgView(AbstractView):
         lines = header_formatter.format(self.w)
         line_num = self.draw_lines(0, lines)
 
-        current_msg_idx = self.model.get_current_chat_msg_idx()
-        msgs_to_draw = self._collect_msgs_to_draw(current_msg_idx, msgs)
-        if not config.LATEST_MSG_ON_TOP:
-            msgs_to_draw = reversed(msgs_to_draw)
+        try:
+            current_msg_idx = self.model.get_current_chat_msg_idx()
+            msgs_to_draw = self._collect_msgs_to_draw(current_msg_idx, msgs)
+            if not config.LATEST_MSG_ON_TOP:
+                msgs_to_draw = reversed(msgs_to_draw)
 
-        # Draw messages
-        for lines in msgs_to_draw:
-            line_num = self.draw_lines(line_num, lines)
-        self._refresh()
+            for lines in msgs_to_draw:
+                line_num = self.draw_lines(line_num, lines)
+        finally:
+            self._refresh()

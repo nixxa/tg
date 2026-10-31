@@ -1,7 +1,7 @@
 """
-This module contains the Controller class and related functions for managing interactions between the model, view, and Telegram library (Tdlib).
+This module contains the Controller class and related functions for managing interactions between the model, view, and Telegram.
 Classes:
-    Controller: Manages interactions between the model, view, and Telegram library (Tdlib).
+    Controller: Manages interactions between the model, view, and Telegram.
 Functions:
     map_key_to_layout(key: str, lang_map: Dict[str, str]) -> str:
         Maps a key to a layout based on the provided language map.
@@ -12,22 +12,22 @@ Functions:
     strip_replied_msg(msg: str) -> str:
         Strips the replied message prefix from the given message.
 """
+
+import curses
 import logging
 import os
 import shlex
-import curses
 from datetime import datetime
 from functools import partial, wraps
 from queue import Queue
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from telegram.utils import AsyncResult
-
 from tg import config
+from tg.client import Client
 from tg.models import Model
 from tg.msg import MsgProxy
-from tg.tdlib import ChatAction, ChatType, Tdlib, get_chat_type
+from tg.types import ChatAction, ChatType, get_chat_type
 from tg.utils import (
     get_duration,
     get_mime,
@@ -55,7 +55,7 @@ msg_handler: Dict[str, HandlerType] = {}
 layout_maps: Set[str] = set()
 
 
-def map_key_to_layout(key:str, lang_map: Dict[str, str]):
+def map_key_to_layout(key: str, lang_map: Dict[str, str]):
     mapped_key = ""
     for char in key:
         if char in lang_map:
@@ -63,6 +63,7 @@ def map_key_to_layout(key:str, lang_map: Dict[str, str]):
         else:
             mapped_key += char
     return mapped_key
+
 
 def bind(
     binding: Dict[str, HandlerType],
@@ -97,10 +98,10 @@ def bind(
 
 class Controller:
     """
-    Controller class to manage interactions between the model, view, and Telegram library (Tdlib).
+    Controller class to manage interactions between the model, view, and Telegram.
     """
 
-    def __init__(self, model: Model, view: View, tg: Tdlib) -> None:
+    def __init__(self, model: Model, view: View, tg: Client) -> None:
         self.model = model
         self.view = view
         self.queue: Queue = Queue()
@@ -324,7 +325,7 @@ class Controller:
 
     @bind(msg_handler, ["R"])
     def reply_with_long_message(self) -> None:
-        """ Opens editor to reply with long message """
+        """Opens editor to reply with long message"""
         if not self.can_send_msg():
             self.present_info("Can't send msg in this chat")
             return
@@ -339,7 +340,7 @@ class Controller:
             f.write(insert_replied_msg(msg))
             f.seek(0)
             s.call(config.LONG_MSG_CMD.format(file_path=shlex.quote(f.name)))
-            with open(f.name, encoding='utf-8') as f:
+            with open(f.name, encoding="utf-8") as f:
                 if replied_msg := strip_replied_msg(f.read().strip()):
                     self.model.view_all_msgs()
                     self.tg.reply_message(chat_id, reply_to_msg, replied_msg)
@@ -374,7 +375,7 @@ class Controller:
         ) as s:
             self.tg.send_chat_action(chat_id, ChatAction.chatActionTyping)
             s.call(config.LONG_MSG_CMD.format(file_path=shlex.quote(f.name)))
-            with open(f.name, encoding='utf-8') as f:
+            with open(f.name, encoding="utf-8") as f:
                 if msg := f.read().strip():
                     self.model.send_message(text=msg)
                     self.present_info("Message sent")
@@ -403,7 +404,7 @@ class Controller:
         try:
             with NamedTemporaryFile("w") as f, suspend(self.view) as s:
                 s.call(config.FILE_PICKER_CMD.format(file_path=f.name))
-                with open(f.name, encoding='utf-8') as f:
+                with open(f.name, encoding="utf-8") as f:
                     file_path = f.read().strip()
         except FileNotFoundError:
             pass
@@ -467,7 +468,7 @@ class Controller:
 
     def send_file(
         self,
-        send_file_fun: Callable[[str, int], AsyncResult],
+        send_file_fun: Callable[[str, int], Any],
     ) -> None:
         _input = self.view.status.get_input()
         if _input is None:
@@ -520,8 +521,8 @@ class Controller:
     def download(self, file_id: int, chat_id: int, msg_id: int) -> None:
         log.info("Downloading file: file_id=%s", file_id)
         self.model.downloads[file_id] = (chat_id, msg_id)
-        self.tg.download_file(file_id=file_id)
-        log.info("Downloaded: file_id=%s", file_id)
+        self.tg.download_file(file_id, chat_id, msg_id)
+        log.info("Downloading: file_id=%s", file_id)
 
     def can_send_msg(self) -> bool:
         chat = self.model.chats.chats[self.model.current_chat]
@@ -597,7 +598,7 @@ class Controller:
             f.write(msg.text_content)
             f.flush()
             s.call(f"{config.EDITOR} {f.name}")
-            with open(f.name, encoding='utf-8') as f:
+            with open(f.name, encoding="utf-8") as f:
                 if text := f.read().strip():
                     self.model.edit_message(text=text)
                     self.present_info("Message edited")
@@ -619,16 +620,22 @@ class Controller:
 
         with NamedTemporaryFile("r+") as tmp, suspend(self.view) as s:
             s.run_with_input(f"{cmd} > {tmp.name}", users_out)
-            with open(tmp.name, encoding='utf-8') as f:
+            with open(tmp.name, encoding="utf-8") as f:
                 return [int(line.split()[0]) for line in f.readlines()]
 
     @bind(chat_handler, ["ns"])
     def new_secret(self) -> None:
-        """Create new secret chat"""
+        """Create a secret chat with one contact."""
         user_ids = self._get_user_ids()
         if not user_ids:
             return
-        self.tg.create_new_secret_chat(user_ids[0])
+        result = self.tg.create_new_secret_chat(user_ids[0])
+        result.wait()
+        if result.error:
+            self.present_error(result.error_info or "Can't create secret chat")
+            return
+        self.present_info("Secret chat requested")
+        self.render()
 
     @bind(chat_handler, ["ng"])
     def new_group(self) -> None:
@@ -943,8 +950,9 @@ class Controller:
         # notify
         if self.model.is_me(msg["sender_id"].get("user_id")):
             return
-        user = self.model.users.get_user(msg.sender_id)
-        name = f"{user['first_name']} {user['last_name']}"
+        user = self.model.users.users.get(msg.sender_id) or {}
+        name = f"{user.get('first_name', '')} {user.get('last_name', '')}"
+        name = name.strip() or "Telegram"
 
         if text := msg.text_content if msg.is_text else msg.content_type:
             if msg.date >= self.startup_time:

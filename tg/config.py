@@ -2,6 +2,7 @@
 Every parameter (except for CONFIG_FILE) can be
 overwritten by external config file
 """
+
 import os
 import platform
 import runpy
@@ -20,16 +21,12 @@ MAILCAP_FILE: Optional[str] = None
 LOG_LEVEL = "INFO"
 LOG_PATH = os.path.expanduser("~/.local/share/tg/")
 
-#API_ID = "559815"
-#API_HASH = "fd121358f59d764c57c55871aa0807ca"
+# API_ID = "559815"
+# API_HASH = "fd121358f59d764c57c55871aa0807ca"
 API_ID = "26850027"
 API_HASH = "398f2f004c75cd7112dafec9610a9fb5"
 
 PHONE = None
-ENC_KEY = ""
-
-TDLIB_PATH = None
-TDLIB_VERBOSITY = 0
 
 MAX_DOWNLOAD_SIZE = "10MB"
 
@@ -96,9 +93,10 @@ FILE_PICKER_CMD = "ranger --choosefile={file_path}"
 DOWNLOAD_DIR = os.path.expanduser("~/Downloads/")
 
 LAYOUT_MAPPING = {
-    eng: rus for (eng, rus) in zip(
+    eng: rus
+    for (eng, rus) in zip(
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-        "фисвуапршолдьтщзйкыегмцчняФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯ"
+        "фисвуапршолдьтщзйкыегмцчняФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯ",
     )
 }
 

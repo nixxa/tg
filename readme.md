@@ -1,172 +1,104 @@
 # tg
 
-[![Join telegram chat](https://img.shields.io/badge/telegram-join%20chat-black.svg)](https://t.me/tg_term)
-
-Telegram terminal client.
+Terminal Telegram client. The interface is curses. Telegram is reached through [Telethon](https://docs.telethon.dev/).
 
 ![tg screenshot](tg-screenshot.png)
 
-
 ## Features
 
-- [X] view mediafiles: photo, video, voice/video notes, documents
-- [X] ability to send pictures, documents, audio, video
-- [X] reply, edit, forward, delete, send messages
-- [X] stickers
-- [X] notifications
-- [X] record and send voice msgs
-- [X] auto download files
-- [X] toggle chats: pin/unpin, mark as read/unread, mute/unmute
-- [X] message history
-- [X] list contacts
-- [X] show user status
-- [X] secret chats
-- [ ] search
-- [ ] bots (bot keyboard)
+- View photos, video, voice and video notes, documents, and stickers
+- Send text, photos, documents, audio, video, and animations
+- Reply, edit, forward, and delete messages
+- Record and send voice messages
+- Notifications
+- Automatic download of small files
+- Pin, mute, and mark chats read or unread
+- Message history
+- Contacts and user status
+- Secret chats
+- Contact search
 
+Not implemented: full-text message search, and bot keyboards.
 
 ## Requirements
 
-To use tg, you'll need to have the following installed:
+- Python 3.14 or newer
+- [less](https://en.wikipedia.org/wiki/Less_(Unix)), used to show profiles, chat info, and help
 
-- [Python >= 3.12](https://www.python.org/downloads/)
-- [TDLib](https://tdlib.github.io/td/build.html?language=Python)
-  For macOS:
-  ```sh
-  brew install tdlib
-  ```
-  and then set in config `TDLIB_PATH`
-- [Less](https://en.wikipedia.org/wiki/Less_(Unix))
-  For Arch Linux:
-  ```sh
-  sudo pacman -S less
-  ```
+Telethon and [telethon-secret-chat](https://pypi.org/project/telethon-secret-chat/) are installed with the package.
 
-## Optional dependencies
+## Optional tools
 
-- [Noto Fonts](https://fonts.google.com/noto) - or any other font with emoji
-- [terminal-notifier](https://github.com/julienXX/terminal-notifier) - for Mac (used by default). You can change it to [dunst](https://github.com/dunst-project/dunst) for Linux or any other notifications program (see `NOTIFY_CMD` in configuration)
-- [ffmpeg](https://ffmpeg.org/) - to record voice msgs and upload videos.
-- `urlview` to choose urls when there is multiple in message, use `URL_VIEW` in config file to use another app (it should accept urls in stdin)
-- to open `stickers` and `animated` ones (thumbnail preview) you need to set in mailcap appropriate handler and have app which will open `webp` file:
-  ```ini
-  image/webp; mpv %s
-  ```
-- [ranger](https://github.com/ranger/ranger), [nnn](https://github.com/jarun/nnn) - can be used to choose file when sending, customizable with `FILE_PICKER_CMD`
-- [fzf](https://github.com/junegunn/fzf) - to create groups and secret chats (used for single and multiple user selection)
+- A font with emoji, such as [Noto](https://fonts.google.com/noto)
+- [ffmpeg](https://ffmpeg.org/) to record voice messages
+- [fzf](https://github.com/junegunn/fzf) to pick users when creating a group or a secret chat
+- [ranger](https://github.com/ranger/ranger) or [nnn](https://github.com/jarun/nnn) as the file picker (`FILE_PICKER_CMD`)
+- `urlview`, or another program set as `URL_VIEW`, when a message contains several links
+- A notifier. The default command is `terminal-notifier` on macOS. On Linux, point `NOTIFY_CMD` at [dunst](https://github.com/dunst-project/dunst) or another program
+- `wl-copy` or `xclip` so yank can reach the clipboard. macOS uses `pbcopy`
 
-## Installation
-
-### From PyPI
-
-This option is recommended for production:
+## Install
 
 ```sh
-pip3 install tg
-tg
-```
-
-### Homebrew
-
-```sh
-brew tap paul-nameless/homebrew-repo
-brew install tg
-```
-
-### From sources
-
-This option is recommended for development:
-
-```sh
-git clone https://github.com/paul-nameless/tg.git
+git clone https://github.com/nixxa/tg.git
 cd tg
-pip install python-telegram
-pip install .
-tg
+python3 -m venv .venv
+.venv/bin/pip install .
+.venv/bin/tg
 ```
 
-### Using Docker
+### Docker
 
-> Note that voice recordings and notifications won't work when using Docker.
+Voice recording and desktop notifications do not work in the container. Mount the config and cache directories so the login survives the container.
 
 ```sh
-docker run -it --rm ghcr.io/paul-nameless/tg
+docker build -t tg .
+docker run -it --rm \
+  -v "$HOME/.config/tg:/root/.config/tg" \
+  -v "$HOME/.cache/tg:/root/.cache/tg" \
+  tg
 ```
 
-### From the AUR
+## First run
 
-If you're using Arch Linux, you can install tg through [its AUR package](https://aur.archlinux.org/packages/telegram-tg/):
+If `~/.config/tg/conf.py` does not exist, tg asks for a phone number and writes it there. Telethon then asks for the login code. The session is stored at `~/.cache/tg/telethon.session`.
 
-If you're using the `yay` AUR helper, you can install the package with:
-```bash
-yay -S telegram-tg
-```
+This client does not read a TDLib database. An existing TDLib login cannot be reused.
 
-If you want to use the latest developement version via the AUR you can find it [here](https://aur.archlinux.org/packages/telegram-tg-git/)
+Get `API_ID` and `API_HASH` from [my.telegram.org](https://my.telegram.org) if you do not want the built-in application credentials.
 
 ## Configuration
 
-Config file should be stored at `~/.config/tg/conf.py`. This is simple python file.
-
-### Simple config:
-
-```python
-# should start with + (plus) and contain country code
-PHONE = "[phone number in international format]"
-```
-
-### Advanced configuration:
-
-All configurable variables can be found [here](https://github.com/paul-nameless/tg/blob/master/tg/config.py)
+`~/.config/tg/conf.py` is a Python file. Names in uppercase replace the defaults in `tg/config.py`.
 
 ```python
 import os
 
-# You can write anything you want here, file will be executed at start time
-# You can keep you sensitive information in password managers or gpg
-# encrypted files for example
 def get_pass(key):
-    # retrieves key from password store
     return os.popen("pass show {} | head -n 1".format(key)).read().strip()
 
+PHONE = get_pass("telegram-phone")
 
-PHONE = get_pass("i/telegram-phone")
-# encrypt you local tdlib database with the key
-ENC_KEY = get_pass("i/telegram-enc-key")
+# https://my.telegram.org
+API_ID = "123456"
+API_HASH = "api hash"
 
-# log level for debugging, info by default
-LOG_LEVEL = "DEBUG"
-# path where logs will be stored (all.log and error.log)
+LOG_LEVEL = "INFO"
 LOG_PATH = os.path.expanduser("~/.local/share/tg/")
 
-# If you have problems with tdlib shipped with the client, you can install and
-# use your own, for example:
-TDLIB_PATH = "/usr/local/Cellar/tdlib/1.6.0/lib/libtdjson.dylib"
+NOTIFY_CMD = "dunstify {title} {msg}"
 
-# you can use any other notification cmd, it is simple python string which
-# can format title, msg, subtitle and icon_path paramters
-# In these exapmle, kitty terminal is used and when notification is pressed
-# it will focus on the tab of running tg
-NOTIFY_CMD = "/usr/local/bin/terminal-notifier -title {title} -subtitle {subtitle} -message {msg} -appIcon {icon_path} -sound default -execute '/Applications/kitty.app/Contents/MacOS/kitty @ --to unix:/tmp/kitty focus-tab --no-response -m title:tg'"
+# Opus audio in an Ogg container, one channel.
+VOICE_RECORD_CMD = "ffmpeg -f alsa -i hw:0 -c:a libopus -b:a 32k {file_path}"
 
-# You can use your own voice recording cmd but it's better to use default one.
-# The voice note must be encoded with the Opus codec, and stored inside an OGG
-# container. Voice notes can have only a single audio channel.
-VOICE_RECORD_CMD = "ffmpeg -f avfoundation -i ':0' -c:a libopus -b:a 32k {file_path}"
-
-# You can customize chat and msg flags however you want.
-# By default words will be used for readability, but you can make
-# it as simple as one letter flags like in mutt or add emojies
 CHAT_FLAGS = {
     "online": "●",
     "pinned": "P",
     "muted": "M",
-    # chat is marked as unread
     "unread": "U",
-    # last msg haven't been seen by recipient
     "unseen": "✓",
     "secret": "🔒",
-    "seen": "✓✓",  # leave empty if you don't want to see it
+    "seen": "✓✓",
 }
 MSG_FLAGS = {
     "selected": "*",
@@ -175,131 +107,89 @@ MSG_FLAGS = {
     "unseen": "U",
     "edited": "E",
     "pending": "...",
-    "failed": "💩",
-    "seen": "✓✓",  # leave empty if you don't want to see it
+    "failed": "x",
+    "seen": "✓✓",
 }
 
-# use this app to open url when there are multiple
-URL_VIEW = 'urlview'
-
-# Specifies range of colors to use for drawing users with
-# different colors
-# this one uses base 16 colors which should look good by default
+URL_VIEW = "urlview"
 USERS_COLORS = tuple(range(2, 16))
-
-# to use 256 colors, set range appropriately
-# though 233 looks better, because last colors are black and gray
-# USERS_COLORS = tuple(range(233))
-
-# to make one color for all users
-# USERS_COLORS = (4,)
-
-# cleanup cache
-# Values: N days, None (never)
-KEEP_MEDIA = 7
-
+KEEP_MEDIA = 7  # days, or None to keep files
 FILE_PICKER_CMD = "ranger --choosefile={file_path}"
-# FILE_PICKER_CMD = "nnn -p {file_path}"
-
-MAILCAP_FILE = os.path.expanduser("~/.config/mailcap")
-
-DOWNLOAD_DIR = os.path.expanduser("~/Downloads/")  # copy file to this dir
+DOWNLOAD_DIR = os.path.expanduser("~/Downloads/")
+EDITOR = "vim"
+VIEW_TEXT_CMD = "less"
+LONG_MSG_CMD = "vim + -c 'startinsert' {file_path}"
 ```
 
-# to map key bindings to a different language or a different keyboard layout
-LAYOUT_MAPPING = {
-    eng: rus for (eng, rus) in zip(
-        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-        "фисвуапршолдьтщзйкыегмцчняФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯ"
-    )
-}
+Files and logs:
 
-### Mailcap file
+| Path | Contents |
+| --- | --- |
+| `~/.config/tg/conf.py` | Configuration |
+| `~/.cache/tg/telethon.session` | Login session and secret-chat keys |
+| `~/.cache/tg/secret_messages.json` | Decrypted secret-chat history |
+| `~/.cache/tg/` | Downloaded media |
+| `~/.local/share/tg/` | Logs |
 
-Mailcap file is used for deciding how to open telegram files (docs, pics, voice notes, etc.). Path to the file can be overriden with `MAILCAP_FILE` in config file.
+`KEEP_MEDIA` is how many days downloaded files are kept. `MAX_DOWNLOAD_SIZE` (default `10MB`) is the limit for automatic downloads.
 
-Example: `~/.mailcap`
+Opening a file uses `xdg-open` on Linux and `open` on macOS (`DEFAULT_OPEN`). Plain text is opened with `EDITOR`.
 
-```ini
-# media
-video/*; mpv "%s"
-audio/ogg; mpv --speed=1.33 "%s"
-audio/mpeg; mpv --no-video "%s"
-image/*; qview "%s"
+## Secret chats
 
-# text
-text/html; w3m "%s"
-text/html; open -a Firefox "%s"
-text/plain; less "%s"
+`ns` asks for a contact and starts a secret chat. Incoming secret chats are accepted automatically. The chat is pending until the other side accepts it, and sending is blocked until then.
 
-# fallback to vim
-text/*; vim "%s"
-```
+Text, photos, documents, audio, and video can be sent. Replies, local delete, and close (`dd` on the chat) work. Secret messages cannot be edited or forwarded.
 
+Chat info (`c` in the message view) shows a SHA-256 digest of the shared key. The official Telegram app shows a different fingerprint, so the two displays will not match.
+
+Keys live in the Telethon session. Decrypted messages are stored in `~/.cache/tg/secret_messages.json` on this machine.
 
 ## Keybindings
 
-vi like keybindings are used in the project. Can be used commands like `4j` - 4 lines down.
+Movement also accepts the arrow keys. A count works: `4j` moves four lines.
 
-For navigation arrow keys also can be used.
+`q` quits. `?` opens the binding list for the current pane.
 
-### Chats:
+### Chats
 
-- `j,k`: move up/down
-- `J,K`: move 10 chats up/down
-- `g`: go to top chat
-- `l`: open msgs of the chat
-- `m`: mute/unmute current chat
-- `p`: pin/unpin current chat
-- `u`: mark read/unread
-- `r`: read current chat
-- `c`: show list of contacts
-- `dd`: delete chat or remove history
-- `ng`: create new group chat
-- `ns`: create new secret chat
-- `/`: search in chats
-- `?`: show help
+- `j`, `k`: move
+- `J`, `K`: move ten chats
+- `g`: first chat
+- `l` or Enter: open the chat
+- `m`: mute or unmute
+- `p`: pin or unpin
+- `u`: mark read or unread
+- `r`: mark the chat read
+- `c`: list contacts
+- `/`: search contacts, then jump to the chat
+- `n`, `N`: next and previous search hit
+- `ng`: new group
+- `ns`: new secret chat
+- `dd`: leave a group or channel, or delete a private or secret chat
 
-## Msgs:
+### Messages
 
-- `j,k`: move up/down
-- `J,K`: move 10 msgs up/down
-- `G`: move to the last msg (at the bottom)
-- `D`: download file
-- `l`: if video, pics or audio then open app specified in mailcap file, for example:
-  ```ini
-  # Images
-  image/png; qView "%s"
-  audio/*; mpv "%s"
-  ```
-  if text, open in `less` (to view multiline msgs)
-- `e`: edit current msg
-- `<space>`: select msg and jump one msg down (use for deletion or forwarding)
-- `<ctrl+space>`: same as space but jumps one msg up
-- `y`: yank (copy) selected msgs with <space> to internal buffer (for forwarding) and copy current msg text or path to file to clipboard
-- `p`: forward (paste) yanked (copied) msgs to current chat
-- `dd`: delete msg for everybody (multiple messages will be deleted if selected)
-- `i or a`: insert mode, type new message
-- `I or A`: open vim to write long msg and send
-- `v`: record and send voice message
-- `r,R`: reply to a current msg
-- `S`: calls a file picker
-- `sv`: send video
-- `sa`: send audio
-- `sp`: send picture
-- `sd`: send document
-- `o`: open url present in message (if multiple urls, `urlview` will be opened)
-- `]`: next chat
-- `[`: prev chat
-- `u`: show user info (username, bio, phone, etc.)
-- `c`: show chat info (e.g. secret chat encryption key, chat id, state, etc.)
-- `?`: show help
-- `!`: open msg with custom cmd
-
-## Publish
-
-Run task to automatically increase version and release (https://taskfile.dev):
-
-```sh
-task release
-```
+- `j`, `k`: move
+- `J`, `K`: move ten messages
+- `G`: last message
+- `]`, `[`: next and previous chat
+- `i`, `a`: write a message
+- `I`, `A`: write a long message in `LONG_MSG_CMD`
+- `r`, `R`: reply, or reply with the long-message editor
+- `e`: edit the current text message
+- `dd`: delete the current message, or the selected ones
+- Space: select and move down
+- Ctrl-Space: select and move up
+- `y`: copy selected messages for forwarding, and copy the current text or file path
+- `p`: forward the yanked messages into this chat
+- `D`: download the file
+- `O`: copy the file into `DOWNLOAD_DIR`
+- `l`: open the file, or the text in `VIEW_TEXT_CMD`
+- `!`: open the file with a command that contains `%s`
+- `o`: open a link. Several links are passed to `URL_VIEW`
+- `S`: pick a file and send it
+- `sp`, `sd`, `sa`, `sv`, `sn`: send a picture, document, audio, video, or animation
+- `v`: record and send a voice message
+- `u`: user info
+- `c`: chat info, including the secret-chat key when the chat is secret

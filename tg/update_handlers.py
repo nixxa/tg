@@ -89,7 +89,7 @@ def update_new_message(controller: Controller, update: Dict[str, Any]) -> None:
     if current_chat_id == msg.chat_id:
         controller.render_msgs()
     if msg.file_id and msg.size and msg.size <= max_download_size:
-        controller.download(msg.file_id, msg.chat_id, msg["id"])
+        controller.download(msg.file_id, msg.chat_id, msg.msg_id)
 
     controller.notify_for_message(msg.chat_id, msg)
 
@@ -147,6 +147,22 @@ def update_chat_is_marked_as_unread(
 def update_new_chat(controller: Controller, update: Dict[str, Any]) -> None:
     chat = update["chat"]
     controller.model.chats.add_chat(chat)
+
+
+@update_handler("updateSecretChat")
+def update_secret_chat(controller: Controller, update: Dict[str, Any]) -> None:
+    chat = update["chat"]
+    chat_id = chat["id"]
+    current = controller.model.current_chat_id
+    for existing in controller.model.chats.chats:
+        if existing["id"] == chat_id:
+            existing.clear()
+            existing.update(chat)
+            controller.model.chats._sort_chats()
+            controller.refresh_current_chat(current)
+            return
+    controller.model.chats.add_chat(chat)
+    controller.refresh_current_chat(current)
 
 
 @update_handler("updateChatIsPinned")
@@ -224,6 +240,10 @@ def update_chat_last_message(
     info["last_message"] = last_message
     if len(update["positions"]) > 0:
         info["order"] = update["positions"][0]["order"]
+    for chat in controller.model.chats.chats:
+        if chat["id"] == chat_id and chat.get("is_pinned"):
+            info.pop("order", None)
+            break
 
     current_chat_id = controller.model.current_chat_id
     if controller.model.chats.update_chat(chat_id, **info):
