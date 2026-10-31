@@ -24,6 +24,7 @@ reverse = curses.A_REVERSE
 underline = curses.A_UNDERLINE
 invisible = curses.A_INVIS
 dim = curses.A_DIM
+italic = getattr(curses, "A_ITALIC", curses.A_DIM)
 
 
 def get_color(fg: int, bg: int) -> int:

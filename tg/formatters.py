@@ -11,7 +11,7 @@ Classes:
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple, Union
 
 from tg import config
 from tg.colors import (
@@ -19,21 +19,18 @@ from tg.colors import (
     cyan,
     dim,
     get_color,
+    italic,
     magenta,
     reverse,
+    underline,
     white,
     yellow,
 )
+from tg.richtext import layout_message, preview_plain
 from tg.models import Model
 from tg.msg import MsgProxy
 from tg.types import ChatType, get_chat_type, is_group
-from tg.utils import (
-    flatten,
-    get_color_by_str,
-    split_string_dwc,
-    string_len_dwc,
-    truncate_to_len,
-)
+from tg.utils import get_color_by_str, string_len_dwc, truncate_to_len
 
 
 class FormattedText:
@@ -146,22 +143,6 @@ class MsgFormatter:
         return attributes | reverse if self.selected else attributes
 
     def format(self, width: int) -> List[FormattedLine]:
-        msg = self._parse_msg(self.msg)
-        if caption := self.msg.caption:
-            msg += "\n" + caption.replace("\n", " ")
-        msg += self._format_url()
-        if reply_to := self.msg.reply_to:
-            msg = self._format_reply_msg(msg, reply_to, width)
-        if reply_markup := self._format_reply_markup():
-            msg += reply_markup
-
-        if links := self.msg.links_from_entities:
-            msg += links
-
-        msg_lines = flatten(
-            [split_string_dwc(msg_line, width) for msg_line in msg.split("\n")]
-        )
-
         result = []
         header_line = FormattedLine([])
         header_line.add_part(
@@ -174,14 +155,84 @@ class MsgFormatter:
             self.flags, self._format_attributes(self.flags_color)
         )
         result.append(header_line)
-
-        for line in msg_lines:
-            formatted_line = FormattedLine(
-                [FormattedText(line, self.text_color)]
-            )
-            result.append(formatted_line)
-
+        if reply := self._reply_line(width):
+            result.extend(self._plain_lines(reply, width))
+        body = self._content_lines(width)
+        if body and self._has_paragraph_gap(body):
+            result.append(FormattedLine([]))
+        result.extend(body)
+        if trailing := self._trailing_text():
+            result.extend(self._plain_lines(trailing, width))
         return result
+
+    def _style_attr(self, styles: FrozenSet[str]) -> int:
+        if "code" in styles or "pre" in styles:
+            attr = get_color(cyan, -1)
+        elif "link" in styles:
+            attr = get_color(cyan, -1) | underline
+        elif "quote" in styles or "spoiler" in styles:
+            attr = self.text_color | dim
+        else:
+            attr = self.text_color
+        if "bold" in styles:
+            attr |= bold
+        if "italic" in styles:
+            attr |= italic
+        if "underline" in styles or "link" in styles:
+            attr |= underline
+        if "strike" in styles:
+            attr |= dim
+        return attr
+
+    def _content_lines(self, width: int) -> List[FormattedLine]:
+        wrap = max(width - 1, 1)
+        if self.msg.is_text:
+            return self._styled_lines(
+                self.msg.text_content, self.msg.text_entities, wrap
+            )
+        lines = self._styled_lines(self._parse_content(self.msg), [], wrap)
+        caption = self.msg.caption or ""
+        if not caption:
+            return lines
+        if lines:
+            lines.append(FormattedLine([]))
+        lines.extend(self._styled_lines(caption, self.msg.text_entities, wrap))
+        return lines
+
+    def _styled_lines(
+        self, text: str, entities: List[Dict[str, Any]], width: int
+    ) -> List[FormattedLine]:
+        lines = []
+        for parts in layout_message(text, entities, width):
+            line = FormattedLine([])
+            for chunk, styles in parts:
+                line.add_part(chunk, self._style_attr(styles))
+            lines.append(line)
+        return lines
+
+    def _plain_lines(self, text: str, width: int) -> List[FormattedLine]:
+        return self._styled_lines(text, [], width)
+
+    def _reply_line(self, width: int) -> str:
+        if not self.msg.reply_to:
+            return ""
+        quoted = self._format_reply_msg("", self.msg.reply_to, width)
+        return quoted.strip("\n")
+
+    def _trailing_text(self) -> str:
+        parts = []
+        if url := self._format_url().strip("\n"):
+            parts.append(url)
+        if markup := self._format_reply_markup().strip("\n"):
+            parts.append(markup)
+        links = self.msg.links_from_entities or ""
+        if links.strip("\n"):
+            parts.append(links.strip("\n"))
+        return "\n".join(parts)
+
+    @staticmethod
+    def _has_paragraph_gap(lines: List[FormattedLine]) -> bool:
+        return any(not line.parts for line in lines)
 
     def _format_url(self) -> str:
         msg_proxy = self.msg
@@ -328,38 +379,51 @@ class PrivateMsgFormatter(MsgFormatter):
         return " \uf47d\uf47d" if self.msg.is_outgoing else " "
 
     def format(self, width: int) -> List[FormattedLine]:
-        msg = self._parse_msg(self.msg)
-
-        if reply_to := self.msg.reply_to:
-            msg = self._format_reply_msg(msg, reply_to, width)
-
-        if links := self.msg.links_from_entities:
-            msg += links
-
-        msg_lines = flatten(
-            [split_string_dwc(msg_line, width) for msg_line in msg.split("\n")]
+        body = self._content_lines(width)
+        trailing = self._trailing_text()
+        reply = self._reply_line(width)
+        if trailing:
+            extra = self._plain_lines(trailing, width)
+        else:
+            extra = []
+        if reply:
+            quote = self._plain_lines(reply, width)
+        else:
+            quote = []
+        one_line = (
+            not quote
+            and not extra
+            and len(body) == 1
+            and body[0].parts
+            and sum(string_len_dwc(part.text) for part in body[0].parts)
+            <= width - string_len_dwc(self.time) - 2
         )
+        if one_line:
+            line = FormattedLine([])
+            line.add_part(self.time, self._format_attributes(self.time_color))
+            line.add_part(self.dir, self.time_color)
+            line.add_part(" ", self.text_color)
+            for part in body[0].parts:
+                line.add_part(part.text, part.attributes)
+            used = (
+                string_len_dwc(self.time)
+                + string_len_dwc(self.dir)
+                + 1
+                + sum(string_len_dwc(part.text) for part in body[0].parts)
+                + string_len_dwc(self.flags)
+            )
+            gap = width - used
+            if gap > 0:
+                line.add_part(" " * gap, self.text_color)
+                line.add_part(self.flags, self.flags_color)
+            return [line]
+
         spacer_len = (
             width
             - string_len_dwc(self.time)
             - string_len_dwc(self.dir)
             - string_len_dwc(self.flags)
         )
-
-        if len(msg_lines) == 1 and len(msg_lines[0]) <= (
-            width - string_len_dwc(self.time) - 1
-        ):
-            line = FormattedLine([])
-            line.add_part(self.time, self._format_attributes(self.time_color))
-            line.add_part(self.dir, self.time_color)
-            line.add_part(f" {msg_lines[0]}", self.text_color)
-
-            spacer_len = spacer_len - string_len_dwc(msg_lines[0]) - 1
-            if spacer_len > 0:
-                line.add_part(" " * spacer_len, self.text_color)
-                line.add_part(self.flags, self.flags_color)
-            return [line]
-
         result = []
         header_line = FormattedLine([])
         header_line.add_part(
@@ -368,20 +432,19 @@ class PrivateMsgFormatter(MsgFormatter):
         header_line.add_part(
             self.dir, self._format_attributes(self.time_color)
         )
-        header_line.add_part(
-            " " * spacer_len, self._format_attributes(self.text_color)
-        )
+        if spacer_len > 0:
+            header_line.add_part(
+                " " * spacer_len, self._format_attributes(self.text_color)
+            )
         header_line.add_part(
             self.flags, self._format_attributes(self.flags_color)
         )
         result.append(header_line)
-
-        for line in msg_lines:
-            formatted_line = FormattedLine(
-                [FormattedText(line, self.text_color)]
-            )
-            result.append(formatted_line)
-
+        result.extend(quote)
+        if self._has_paragraph_gap(body):
+            result.append(FormattedLine([]))
+        result.extend(body)
+        result.extend(extra)
         return result
 
 
@@ -526,7 +589,7 @@ class ChatFormatter:
 
     def _get_last_msg_data(self) -> Tuple[Optional[str], Optional[str]]:
         user, last_msg = self._get_last_msg()
-        last_msg = last_msg.replace("\n", " ")
+        last_msg = preview_plain(last_msg)
         if user:
             last_msg_sender = self.model.users.get_user_label(user)
             chat_type = get_chat_type(self.chat)
@@ -543,7 +606,7 @@ class ChatFormatter:
         formatter = MsgFormatter(last_msg_proxy, self.model, False)
         return (
             last_msg["sender_id"].get("user_id"),
-            formatter._parse_content(last_msg_proxy),
+            preview_plain(formatter._parse_content(last_msg_proxy)),
         )
 
 

@@ -131,6 +131,38 @@ def _ts(value: Any) -> int:
     return int(value)
 
 
+_ENTITY_KINDS = {
+    "MessageEntityBold": "textEntityTypeBold",
+    "MessageEntityItalic": "textEntityTypeItalic",
+    "MessageEntityUnderline": "textEntityTypeUnderline",
+    "MessageEntityStrike": "textEntityTypeStrikethrough",
+    "MessageEntityCode": "textEntityTypeCode",
+    "MessageEntityPre": "textEntityTypePre",
+    "MessageEntityTextUrl": "textEntityTypeTextUrl",
+    "MessageEntityUrl": "textEntityTypeUrl",
+    "MessageEntityBlockquote": "textEntityTypeBlockQuote",
+    "MessageEntitySpoiler": "textEntityTypeSpoiler",
+}
+
+
+def _python_span(
+    text: str, offset: int, length: int
+) -> Optional[tuple[int, int]]:
+    """Telegram entity offsets count UTF-16 code units."""
+    if offset < 0 or length <= 0 or not text:
+        return None
+    raw = text.encode("utf-16-le")
+    start_b = offset * 2
+    end_b = (offset + length) * 2
+    if end_b > len(raw):
+        if offset + length <= len(text):
+            return offset, offset + length
+        return None
+    begin = len(raw[:start_b].decode("utf-16-le"))
+    end = begin + len(raw[start_b:end_b].decode("utf-16-le"))
+    return begin, end
+
+
 def _plain(value: Any) -> str:
     if value is None:
         return ""
@@ -501,23 +533,36 @@ class Client:
         text = msg.text or ""
         if not text:
             return {}
-        return {"caption": {"text": text}}
+        return {
+            "caption": {"text": text, "entities": self._text_entities(msg)}
+        }
 
-    def _text_content(self, msg: Any) -> Dict[str, Any]:
+    def _text_entities(self, msg: Any) -> List[Dict[str, Any]]:
+        text = msg.text or ""
         entities = []
         for entity in msg.entities or []:
-            if isinstance(entity, types.MessageEntityTextUrl):
-                entities.append(
-                    {
-                        "@type": "textEntity",
-                        "offset": entity.offset,
-                        "length": entity.length,
-                        "type": {
-                            "@type": "textEntityTypeTextUrl",
-                            "url": entity.url,
-                        },
-                    }
-                )
+            kind = _ENTITY_KINDS.get(type(entity).__name__)
+            if not kind:
+                continue
+            span = _python_span(text, entity.offset, entity.length)
+            if span is None:
+                continue
+            info: Dict[str, Any] = {"@type": kind}
+            url = getattr(entity, "url", None)
+            if url:
+                info["url"] = url
+            entities.append(
+                {
+                    "@type": "textEntity",
+                    "offset": span[0],
+                    "length": span[1] - span[0],
+                    "type": info,
+                }
+            )
+        return entities
+
+    def _text_content(self, msg: Any) -> Dict[str, Any]:
+        entities = self._text_entities(msg)
         content: Dict[str, Any] = {
             "@type": "messageText",
             "text": {

@@ -3,6 +3,7 @@ This module provides a `MsgProxy` class for handling message objects with variou
 Classes:
     MsgProxy: A proxy class for handling message objects with various content types.
 """
+
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -168,7 +169,7 @@ class MsgProxy:
     @property
     def is_outgoing(self) -> bool:
         return self.msg.get("is_outgoing", False)
-    
+
     @property
     def is_text(self) -> bool:
         return self.msg["content"]["@type"] == "messageText"
@@ -179,7 +180,9 @@ class MsgProxy:
 
     @property
     def poll_question(self) -> str:
-        return self.msg["content"]["poll"]["question"] if self.is_poll else None
+        return (
+            self.msg["content"]["poll"]["question"] if self.is_poll else None
+        )
 
     @property
     def poll_options(self) -> List[Dict]:
@@ -198,7 +201,15 @@ class MsgProxy:
         if not "text" in self.msg["content"]["text"]:
             return ""
         return self.msg["content"]["text"]["text"]
-    
+
+    @property
+    def text_entities(self) -> List[Dict[str, Any]]:
+        content = self.msg["content"]
+        if content.get("@type") == "messageText":
+            return content.get("text", {}).get("entities") or []
+        caption = content.get("caption") or {}
+        return caption.get("entities") or []
+
     @property
     def links_from_entities(self) -> str:
         if not "text" in self.msg["content"]:
@@ -206,7 +217,10 @@ class MsgProxy:
         if entities := self.msg["content"]["text"].get("entities", None):
             known_entities = set()
             for entity in entities:
-                if entity["@type"] == "textEntity" and entity["type"]["@type"] == "textEntityTypeTextUrl":
+                if (
+                    entity["@type"] == "textEntity"
+                    and entity["type"]["@type"] == "textEntityTypeTextUrl"
+                ):
                     offset = entity["offset"]
                     length = entity["length"]
                     known_entities.add(entity["type"]["url"])
@@ -216,7 +230,6 @@ class MsgProxy:
                     result += f"{url}\n"
                 return result
         return None
-                    
 
     @property
     def is_downloaded(self) -> bool:
