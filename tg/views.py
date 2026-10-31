@@ -1,12 +1,21 @@
 import curses
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from _curses import window
 
 from tg import config
 from tg.colors import get_color, white
-from tg.formatters import ChatFormatter, FormattedLine, MessagesHeaderFormatter, MsgFormatter, HeaderFormatter, PrivateMsgFormatter
+from tg.formatters import (
+    ChatFormatter,
+    FormattedLine,
+    HeaderFormatter,
+    MessagesHeaderFormatter,
+    MsgFormatter,
+    PrivateMsgFormatter,
+    format_date_separator,
+)
 from tg.models import Model
 from tg.msg import MsgProxy
 from tg.utils import num, string_len_dwc, enumerate2
@@ -92,9 +101,14 @@ class View:
             ch = self.stdscr.getch()
             if ch == 208 or ch == 209:
                 second_ch = self.stdscr.getch()
-                key = (ch.to_bytes() + second_ch.to_bytes()).decode('utf-8')
-            elif ch in [ curses.KEY_UP, curses.KEY_DOWN, curses.KEY_PPAGE, curses.KEY_NPAGE ]:
-                key = chr(ch)                
+                key = (ch.to_bytes() + second_ch.to_bytes()).decode("utf-8")
+            elif ch in [
+                curses.KEY_UP,
+                curses.KEY_DOWN,
+                curses.KEY_PPAGE,
+                curses.KEY_NPAGE,
+            ]:
+                key = chr(ch)
             else:
                 log.info("raw ch without unctrl: %s", ch)
                 try:
@@ -125,7 +139,7 @@ class AbstractView:
     @property
     def width(self) -> int:
         return self.w - self.first_column
-    
+
     def draw_lines(self, line_num, lines) -> int:
         """
         Draws multiple lines on the window starting from a given line number.
@@ -200,11 +214,12 @@ class StatusView:
 
 class ChatView(AbstractView):
     def __init__(
-            self,
-            stdscr: window,
-            model: Model,
-            header_fmt: Optional[HeaderFormatter] = HeaderFormatter,
-            chat_fmt: Optional[ChatFormatter] = ChatFormatter) -> None:
+        self,
+        stdscr: window,
+        model: Model,
+        header_fmt: Optional[HeaderFormatter] = HeaderFormatter,
+        chat_fmt: Optional[ChatFormatter] = ChatFormatter,
+    ) -> None:
         super().__init__(Win(stdscr.subwin(0, 0, 0, 0)))
         self.stdscr = stdscr
         self.h = 0
@@ -244,8 +259,16 @@ class ChatView(AbstractView):
             offset = current - limit + 1
 
         try:
-            for line_num, chat in enumerate2(chats[offset:limit+offset], header_height, self.chat_formatter.height):
-                is_selected = line_num == (current - offset) * self.chat_formatter.height + header_height
+            for line_num, chat in enumerate2(
+                chats[offset : limit + offset],
+                header_height,
+                self.chat_formatter.height,
+            ):
+                is_selected = (
+                    line_num
+                    == (current - offset) * self.chat_formatter.height
+                    + header_height
+                )
                 formatter = self.chat_formatter(chat, self.model, is_selected)
                 try:
                     lines = formatter.format(width)
@@ -258,11 +281,7 @@ class ChatView(AbstractView):
 
 
 class MsgView(AbstractView):
-    def __init__(
-        self,
-        stdscr: window,
-        model: Model
-    ) -> None:
+    def __init__(self, stdscr: window, model: Model) -> None:
         super().__init__(Win(stdscr.subwin(0, 0, 0, 0)))
         self.model = model
         self.stdscr = stdscr
@@ -278,10 +297,10 @@ class MsgView(AbstractView):
         self.x = cols - self.w
         self.win.resize(self.h, self.w)
         self.win.mvwin(0, self.x)
-    
+
     def _create_msg_formatter(self, msg: Dict[str, Any], is_selected: bool):
         chat = self.model.chats.chat_by_index(self.model.current_chat)
-        if chat['type']['@type'] in ('chatTypePrivate', 'chatTypeSecret'):
+        if chat["type"]["@type"] in ("chatTypePrivate", "chatTypeSecret"):
             return PrivateMsgFormatter(MsgProxy(msg), self.model, is_selected)
         return MsgFormatter(MsgProxy(msg), self.model, is_selected)
 
@@ -290,44 +309,165 @@ class MsgView(AbstractView):
         current_msg_idx: int,
         msgs: List[Tuple[int, Dict[str, Any]]],
     ) -> List[List[FormattedLine]]:
-        collected_items: List[List[FormattedLine]] = []
-        lines_available = self.h - self.header_formatter.height
+        collected_items: List[Tuple[Any, List[FormattedLine]]] = []
+        budget = self.h - self.header_formatter.height
+        lines_available = budget
         for msg_idx, msg_item in msgs:
-            is_selected_msg = current_msg_idx == msg_idx
-            formatter = self._create_msg_formatter(msg_item, is_selected_msg)
+            formatter = self._create_msg_formatter(
+                msg_item, current_msg_idx == msg_idx
+            )
             msg_lines = formatter.format(width=self.width)
+            day = datetime.fromtimestamp(int(msg_item.get("date") or 0)).date()
             needed_lines = len(msg_lines)
             lines_available -= needed_lines
             if lines_available < 0:
                 if msg_idx == current_msg_idx:
-                    selected_lines = msg_lines[:needed_lines+lines_available]
-                    collected_items.append(selected_lines)
+                    selected_lines = msg_lines[
+                        : needed_lines + lines_available
+                    ]
+                    collected_items.append((day, selected_lines))
                     break
-                # If currently selected message is not visible on the screen, 
-                # then remove first collected item and inrease line_num
+                # If currently selected message is not visible on the screen,
+                # then remove first collected item and increase line_num
                 if msg_idx < current_msg_idx:
                     if len(collected_items) > 0:
                         collected_items.pop(0)
                     lines_available += needed_lines
                 else:
-                    selected_lines = []
+                    selected_lines: List[FormattedLine] = []
                     if config.LATEST_MSG_ON_TOP:
-                        # Select only lines that fit in the available space and cut the tail
-                        selected_lines = msg_lines[:abs(lines_available)]
-                        # TODO: Add ellipsis to the tail
-                        # selected_lines[len(selected_lines) - 1] = tail_ellipsis(selected_lines[len(selected_lines) - 1], self.max_line_width)
+                        # Select only lines that fit and cut the tail
+                        selected_lines = msg_lines[: abs(lines_available)]
                     else:
-                        # Select only lines that fit in the available space and cut the head
-                        selected_lines_count = needed_lines - abs(lines_available)
+                        # Select only lines that fit and cut the head
+                        selected_lines_count = needed_lines - abs(
+                            lines_available
+                        )
                         if selected_lines_count > 0:
                             selected_lines = msg_lines[-selected_lines_count:]
-                            # TODO: Add ellipsis to the head
-                            # selected_lines[0] = head_ellipsis(selected_lines[0], self.max_line_width)
-                    if (len(selected_lines) > 0):
-                        collected_items.append(selected_lines)
+                    if len(selected_lines) > 0:
+                        collected_items.append((day, selected_lines))
                     break
-            collected_items.append(msg_lines)
-        return collected_items
+            else:
+                collected_items.append((day, msg_lines))
+        return self._with_date_separators(collected_items, budget)
+
+    def _with_date_separators(
+        self,
+        items: List[Tuple[Any, List[FormattedLine]]],
+        budget: int,
+    ) -> List[List[FormattedLine]]:
+        """Slip a date banner between two visible messages from different days.
+
+        A banner is shown only when a message from the earlier day and a
+        message from the later day are both on screen. Room for that banner
+        is taken from other messages, never by hiding either side.
+        """
+        if not config.LATEST_MSG_ON_TOP:
+            items = list(reversed(items))
+        blocks: List[Tuple[str, List[FormattedLine], Any]] = []
+        previous = None
+        for day, lines in items:
+            if not lines:
+                continue
+            if previous is not None and day != previous:
+                blocks.append(
+                    ("date", format_date_separator(day, self.width), day)
+                )
+            blocks.append(("msg", lines, day))
+            previous = day
+        self._fit_message_blocks(
+            blocks, budget, keep_tail=not config.LATEST_MSG_ON_TOP
+        )
+        return [lines for _kind, lines, _day in blocks if lines]
+
+    def _fit_message_blocks(
+        self,
+        blocks: List[Tuple[str, List[FormattedLine], Any]],
+        budget: int,
+        keep_tail: bool,
+    ) -> None:
+        """Free rows for boundary banners without hiding either side."""
+        budget = max(budget, 0)
+
+        def total() -> int:
+            return sum(len(lines) for _, lines, _day in blocks)
+
+        def minimum(index: int) -> int:
+            kind, lines, _day = blocks[index]
+            if kind != "msg":
+                return len(lines)
+            keep = 0
+            if index > 0 and blocks[index - 1][0] == "date":
+                keep = 1
+            if index + 1 < len(blocks) and blocks[index + 1][0] == "date":
+                keep = 1
+            msg_indexes = [
+                i for i, block in enumerate(blocks) if block[0] == "msg"
+            ]
+            if msg_indexes:
+                anchor = msg_indexes[-1] if keep_tail else msg_indexes[0]
+                if index == anchor:
+                    keep = max(keep, 1)
+            return keep
+
+        def sacrificable() -> Optional[int]:
+            indexes = (
+                range(len(blocks))
+                if keep_tail
+                else range(len(blocks) - 1, -1, -1)
+            )
+            for index in indexes:
+                if blocks[index][0] != "msg":
+                    continue
+                if len(blocks[index][1]) > minimum(index):
+                    return index
+            return None
+
+        while total() > budget and blocks:
+            index = sacrificable()
+            if index is None:
+                dates = [
+                    i for i, block in enumerate(blocks) if block[0] == "date"
+                ]
+                if not dates:
+                    break
+                blocks.pop(dates[0] if keep_tail else dates[-1])
+                continue
+            kind, lines, day = blocks[index]
+            cut = min(len(lines) - minimum(index), total() - budget)
+            if keep_tail:
+                kept = lines[cut:]
+            else:
+                kept = lines[: len(lines) - cut]
+            if kept:
+                blocks[index] = (kind, kept, day)
+            else:
+                blocks.pop(index)
+        blocks[:] = [
+            block
+            for index, block in enumerate(blocks)
+            if block[0] != "date" or self._banner_has_both_sides(blocks, index)
+        ]
+
+    def _banner_has_both_sides(
+        self,
+        blocks: List[Tuple[str, List[FormattedLine], Any]],
+        index: int,
+    ) -> bool:
+        previous = next(
+            (block for block in reversed(blocks[:index]) if block[0] == "msg"),
+            None,
+        )
+        following = next(
+            (block for block in blocks[index + 1 :] if block[0] == "msg"),
+            None,
+        )
+        if not previous or not following:
+            return False
+        return bool(
+            previous[1] and following[1] and previous[2] != following[2]
+        )
 
     def draw(
         self,
@@ -335,7 +475,7 @@ class MsgView(AbstractView):
         chat: Dict[str, Any],
     ) -> None:
         self.win.erase()
-        
+
         # Draw title
         header_formatter = self.header_formatter(chat, self.model)
         lines = header_formatter.format(self.w)
@@ -344,8 +484,6 @@ class MsgView(AbstractView):
         try:
             current_msg_idx = self.model.get_current_chat_msg_idx()
             msgs_to_draw = self._collect_msgs_to_draw(current_msg_idx, msgs)
-            if not config.LATEST_MSG_ON_TOP:
-                msgs_to_draw = reversed(msgs_to_draw)
 
             for lines in msgs_to_draw:
                 line_num = self.draw_lines(line_num, lines)

@@ -10,7 +10,7 @@ Classes:
     MessagesHeaderFormatter: Specialized formatter for the messages header in a chat.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, FrozenSet, List, Optional, Tuple, Union
 
 from tg import config
@@ -616,6 +616,20 @@ class ChatFormatter:
             last_msg["sender_id"].get("user_id"),
             preview_plain(formatter._parse_content(last_msg_proxy)),
         )
+
+
+def format_date_separator(day: date, width: int) -> List[FormattedLine]:
+    """Banner shown above the messages sent on one calendar day."""
+    rule_width = max(width - 1, 1)
+    label = day.strftime("%d.%m.%Y")
+    if len(label) > rule_width:
+        label = label[:rule_width]
+    color = get_color(cyan, -1)
+    pad = max(rule_width - len(label), 0)
+    text = (" " * (pad // 2)) + label
+    rule = FormattedLine([FormattedText("-" * rule_width, color)])
+    title = FormattedLine([FormattedText(text, color | bold)])
+    return [rule, title, rule]
 
 
 class HeaderFormatter:
