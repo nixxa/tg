@@ -15,10 +15,10 @@ telethon = "^1.45.0"
 telethon-secret-chat = "^0.2.4"
 
 [tool.poetry.dev-dependencies]
-black = "^24.10.0"
-flake8 = "^7.1.1"
-isort = "^5.13.2"
-mypy = "^1.14.0"
+black = "^26.10"
+flake8 = "^7.5"
+isort = "^9.0"
+mypy = "^2.4"
 
 [tool.poetry.scripts]
 tg = "tg.__main__:main"
