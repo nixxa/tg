@@ -1,36 +1,42 @@
-[tool.poetry]
+[project]
 name = "tg"
 version = "1.0.0"
 description = "Terminal Telegram client"
-authors = ["Igor Goyda <igor.goida@gmail.com>", "Paul Nameless <reacsdas@gmail.com>"]
-license = "Unlicense"
-packages = [{ include = "tg"}]
+authors = [
+    { name = "Igor Goyda", email = "igor.goida@gmail.com" },
+    { name = "Paul Nameless", email = "reacsdas@gmail.com" },
+]
+license = "MIT"
 readme = "readme.md"
+requires-python = ">=3.14,<4.0"
+dependencies = [
+    "telethon (>=1.45.0,<2.0.0)",
+    "telethon-secret-chat (>=0.2.4,<0.3.0)",
+]
+
+[project.urls]
 homepage = "https://github.com/nixxa/tg"
 repository = "https://github.com/nixxa/tg"
 
-[tool.poetry.dependencies]
-python = "^3.14"
-telethon = "^1.45.0"
-telethon-secret-chat = "^0.2.4"
+[project.scripts]
+tg-tui = "tg.__main__:main"
 
-[poetry.group.dev.dependencies]
-black = "^26.10"
-flake8 = "^7.5"
-isort = "^9.0"
-mypy = "^2.4"
-
-[tool.poetry.scripts]
-tg = "tg.__main__:main"
+[dependency-groups]
+dev = [
+    "black (>=26.10,<27.0)",
+    "flake8 (>=7.5,<8.0)",
+    "isort (>=9.0,<10.0)",
+    "mypy (>=2.4,<3.0)",
+]
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core>=2.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.black]
-line-length = 79
+line-length = 80
 
 [tool.isort]
-line_length = 79
+line_length = 80
 multi_line_output = 3
 include_trailing_comma = true
