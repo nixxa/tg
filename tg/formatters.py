@@ -26,9 +26,9 @@ from tg.colors import (
     white,
     yellow,
 )
-from tg.richtext import layout_message, preview_plain
 from tg.models import Model
 from tg.msg import MsgProxy
+from tg.richtext import layout_message, preview_plain
 from tg.types import ChatType, get_chat_type, is_group
 from tg.utils import get_color_by_str, string_len_dwc, truncate_to_len
 
@@ -357,9 +357,7 @@ class MsgFormatter:
             emoji=msg.sticker_emoji,
             closed=msg.is_closed_poll,
         )
-        info = ", ".join(
-            f"{k}={v}" for k, v in fields.items() if v is not None
-        )
+        info = ", ".join(f"{k}={v}" for k, v in fields.items() if v is not None)
 
         return f"[{msg.content_type}: {info}]{content_text}"
 
@@ -437,9 +435,7 @@ class PrivateMsgFormatter(MsgFormatter):
         header_line.add_part(
             self.time, self._format_attributes(self.time_color)
         )
-        header_line.add_part(
-            self.dir, self._format_attributes(self.time_color)
-        )
+        header_line.add_part(self.dir, self._format_attributes(self.time_color))
         if spacer_len > 0:
             header_line.add_part(
                 " " * spacer_len, self._format_attributes(self.text_color)

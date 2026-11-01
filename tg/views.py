@@ -1,9 +1,8 @@
 import curses
 import logging
+from _curses import window
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, cast
-
-from _curses import window
 
 from tg import config
 from tg.colors import get_color, white
@@ -18,7 +17,7 @@ from tg.formatters import (
 )
 from tg.models import Model
 from tg.msg import MsgProxy
-from tg.utils import num, string_len_dwc, enumerate2
+from tg.utils import enumerate2, num, string_len_dwc
 
 log = logging.getLogger(__name__)
 
@@ -323,9 +322,7 @@ class MsgView(AbstractView):
             lines_available -= needed_lines
             if lines_available < 0:
                 if msg_idx == current_msg_idx:
-                    selected_lines = msg_lines[
-                        : needed_lines + lines_available
-                    ]
+                    selected_lines = msg_lines[: needed_lines + lines_available]
                     collected_items.append(
                         (day, selected_lines, msg_item["id"])
                     )

@@ -142,9 +142,7 @@ def _has_formatting(entities: Iterable[Dict[str, Any]]) -> bool:
     return False
 
 
-def _runs_from_entities(
-    text: str, entities: List[Dict[str, Any]]
-) -> List[Run]:
+def _runs_from_entities(text: str, entities: List[Dict[str, Any]]) -> List[Run]:
     masks = [0] * len(text)
     for entity in entities:
         bit = _entity_bit(entity)

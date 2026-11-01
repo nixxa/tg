@@ -222,9 +222,7 @@ class Model:
         tg_result.wait()
         message_properties = tg_result.update
         if chat_id == c_id:
-            return message_properties.get(
-                "can_be_deleted_only_for_self", False
-            )
+            return message_properties.get("can_be_deleted_only_for_self", False)
         return message_properties.get("can_be_deleted_for_all_users", False)
 
     def delete_msgs(self) -> bool:
@@ -327,9 +325,7 @@ class Model:
         }
 
     def get_supergroup_info(self, chat: Dict[str, Any]) -> Dict[str, Any]:
-        result = self.tg.get_supergroup_full_info(
-            chat["type"]["supergroup_id"]
-        )
+        result = self.tg.get_supergroup_full_info(chat["type"]["supergroup_id"])
         result.wait()
         chat_info = result.update
         return {
@@ -339,9 +335,7 @@ class Model:
         }
 
     def get_channel_info(self, chat: Dict[str, Any]) -> Dict[str, Any]:
-        result = self.tg.get_supergroup_full_info(
-            chat["type"]["supergroup_id"]
-        )
+        result = self.tg.get_supergroup_full_info(chat["type"]["supergroup_id"])
         result.wait()
         chat_info = result.update
         return {

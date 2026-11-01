@@ -334,9 +334,10 @@ class Controller:
             return
         reply_to_msg = self.model.current_msg_id
         msg = MsgProxy(self.model.current_msg)
-        with NamedTemporaryFile("w+", suffix=".txt") as f, suspend(
-            self.view
-        ) as s:
+        with (
+            NamedTemporaryFile("w+", suffix=".txt") as f,
+            suspend(self.view) as s,
+        ):
             f.write(insert_replied_msg(msg))
             f.seek(0)
             s.call(config.LONG_MSG_CMD.format(file_path=shlex.quote(f.name)))
@@ -370,9 +371,10 @@ class Controller:
         if not self.can_send_msg() or chat_id is None:
             self.present_info("Can't send msg in this chat")
             return
-        with NamedTemporaryFile("r+", suffix=".txt") as f, suspend(
-            self.view
-        ) as s:
+        with (
+            NamedTemporaryFile("r+", suffix=".txt") as f,
+            suspend(self.view) as s,
+        ):
             self.tg.send_chat_action(chat_id, ChatAction.chatActionTyping)
             s.call(config.LONG_MSG_CMD.format(file_path=shlex.quote(f.name)))
             with open(f.name, encoding="utf-8") as f:
@@ -486,9 +488,7 @@ class Controller:
         file_path = f"/tmp/voice-{datetime.now()}.oga"
         with suspend(self.view) as s:
             s.call(
-                config.VOICE_RECORD_CMD.format(
-                    file_path=shlex.quote(file_path)
-                )
+                config.VOICE_RECORD_CMD.format(file_path=shlex.quote(file_path))
             )
         resp = self.view.status.get_input(
             f"Do you want to send recording: {file_path}? [Y/n]"
@@ -592,9 +592,10 @@ class Controller:
         if not msg.can_be_edited:
             return self.present_error("Meessage can't be edited!")
 
-        with NamedTemporaryFile("r+", suffix=".txt") as f, suspend(
-            self.view
-        ) as s:
+        with (
+            NamedTemporaryFile("r+", suffix=".txt") as f,
+            suspend(self.view) as s,
+        ):
             f.write(msg.text_content)
             f.flush()
             s.call(f"{config.EDITOR} {f.name}")

@@ -180,9 +180,7 @@ class MsgProxy:
 
     @property
     def poll_question(self) -> str:
-        return (
-            self.msg["content"]["poll"]["question"] if self.is_poll else None
-        )
+        return self.msg["content"]["poll"]["question"] if self.is_poll else None
 
     @property
     def poll_options(self) -> List[Dict]:

@@ -90,9 +90,7 @@ _SEND_ACTIONS = {
     ChatAction.chatActionUploadingDocument: (
         types.SendMessageUploadDocumentAction
     ),
-    ChatAction.chatActionChoosingLocation: (
-        types.SendMessageGeoLocationAction
-    ),
+    ChatAction.chatActionChoosingLocation: (types.SendMessageGeoLocationAction),
     ChatAction.chatActionChoosingContact: (
         types.SendMessageChooseContactAction
     ),
@@ -485,9 +483,7 @@ class Client:
         reply_id = getattr(msg, "reply_to_msg_id", None)
         quote = getattr(header, "quote_text", None) or "" if header else ""
         if reply_id or quote:
-            peer = (
-                getattr(header, "reply_to_peer_id", None) if header else None
-            )
+            peer = getattr(header, "reply_to_peer_id", None) if header else None
             reply_chat = (
                 utils.get_peer_id(peer) if peer is not None else msg.chat_id
             )
@@ -546,9 +542,7 @@ class Client:
         text = msg.text or ""
         if not text:
             return {}
-        return {
-            "caption": {"text": text, "entities": self._text_entities(msg)}
-        }
+        return {"caption": {"text": text, "entities": self._text_entities(msg)}}
 
     def _text_entities(self, msg: Any) -> List[Dict[str, Any]]:
         text = msg.text or ""
@@ -974,9 +968,7 @@ class Client:
         await self.client.forward_messages(chat_id, message_ids, from_chat_id)
         return {}
 
-    def view_messages(
-        self, chat_id: int, message_ids: List[int]
-    ) -> CallResult:
+    def view_messages(self, chat_id: int, message_ids: List[int]) -> CallResult:
         if not message_ids:
             return CallResult(update={})
         coro = self._view_messages(chat_id, max(message_ids))
@@ -992,9 +984,7 @@ class Client:
         except Exception:
             log.exception("Telegram request failed")
 
-    async def _view_messages(
-        self, chat_id: int, max_id: int
-    ) -> Dict[str, Any]:
+    async def _view_messages(self, chat_id: int, max_id: int) -> Dict[str, Any]:
         if self._is_secret(chat_id):
             return {}
         await self.client.send_read_acknowledge(chat_id, max_id=max_id)
@@ -1119,9 +1109,7 @@ class Client:
             },
         )
 
-    def open_message_content(
-        self, chat_id: int, message_id: int
-    ) -> CallResult:
+    def open_message_content(self, chat_id: int, message_id: int) -> CallResult:
         self._emit(
             "updateMessageContentOpened",
             {"chat_id": chat_id, "message_id": message_id},
@@ -1338,9 +1326,7 @@ class Client:
             return {}
         peer = await self.client.get_input_entity(chat_id)
         await self.client(
-            ToggleDialogPinRequest(
-                peer=InputDialogPeer(peer), pinned=is_pinned
-            )
+            ToggleDialogPinRequest(peer=InputDialogPeer(peer), pinned=is_pinned)
         )
         return {}
 
@@ -1841,7 +1827,7 @@ class Client:
         try:
             with open(self._secret_store, encoding="utf-8") as handle:
                 raw = json.load(handle)
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             return
         self._secret_seq = int(raw.get("seq") or 0)
         self._secret_users = {
