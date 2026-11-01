@@ -101,7 +101,7 @@ LAYOUT_MAPPING = {
 }
 
 if os.path.isfile(CONFIG_FILE):
-    config_params = runpy.run_path(CONFIG_FILE)  # type: ignore
+    config_params = runpy.run_path(CONFIG_FILE)
     for param, value in config_params.items():
         if param.isupper():
             globals()[param] = value

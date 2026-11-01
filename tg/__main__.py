@@ -1,7 +1,7 @@
 import logging.handlers
 import signal
 import threading
-from curses import window, wrapper  # type: ignore
+from curses import window, wrapper
 from functools import partial
 from types import FrameType
 
@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 def run(tg: Client, stdscr: window) -> None:
 
     # handle ctrl+c, to avoid interrupting tg when subprocess is called
-    def interrupt_signal_handler(sig: int, frame: FrameType) -> None:
+    def interrupt_signal_handler(sig: int, frame: FrameType | None) -> None:
         # TODO: draw on status pane: to quite press <q>
         log.info("Interrupt signal is handled and ignored on purpose.")
 

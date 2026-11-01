@@ -74,12 +74,11 @@ class MsgFormatter:
 
     @property
     def sender(self) -> str:
-        sender = "<Unknown>"
-        if (
-            "is_channel" in self.chat["type"]
-            and self.chat["type"]["is_channel"]
-        ):
-            sender = self.chat["title"]
+        chat = self.chat
+        if chat is None:
+            return " <Unknown>"
+        if "is_channel" in chat["type"] and chat["type"]["is_channel"]:
+            sender = chat["title"]
         else:
             sender = self.model.users.get_user_label(self.msg.sender_id)
         return " " + sender
@@ -87,14 +86,17 @@ class MsgFormatter:
     @property
     def flags(self) -> str:
         flags = []
+        chat = self.chat
+        if chat is None:
+            return ""
 
-        if self.msg.msg_id in self.model.selected[self.chat["id"]]:
+        if self.msg.msg_id in self.model.selected[chat["id"]]:
             flags.append("selected")
 
         if self.msg.forward is not None:
             flags.append("forwarded")
 
-        last_read_msg_id = self.chat["last_read_inbox_message_id"]
+        last_read_msg_id = chat["last_read_inbox_message_id"]
         if (
             not self.model.is_me(self.msg.sender_id)
             and self.msg.msg_id > last_read_msg_id
@@ -102,13 +104,13 @@ class MsgFormatter:
             flags.append("new")
         elif (
             self.model.is_me(self.msg.sender_id)
-            and self.msg.msg_id > self.chat["last_read_outbox_message_id"]
+            and self.msg.msg_id > chat["last_read_outbox_message_id"]
         ):
-            if not self.model.is_me(self.chat["id"]):
+            if not self.model.is_me(chat["id"]):
                 flags.append("unseen")
         elif (
             self.model.is_me(self.msg.sender_id)
-            and self.msg.msg_id <= self.chat["last_read_outbox_message_id"]
+            and self.msg.msg_id <= chat["last_read_outbox_message_id"]
         ):
             flags.append("seen")
         if state := self.msg.msg.get("sending_state"):
@@ -361,7 +363,7 @@ class MsgFormatter:
 
         return f"[{msg.content_type}: {info}]{content_text}"
 
-    def _format_bool(self, value: Optional[bool]) -> str:
+    def _format_bool(self, value: Optional[bool]) -> Optional[str]:
         if value is None:
             return None
         return "yes" if value else "no"
@@ -527,7 +529,9 @@ class ChatFormatter:
         second_line.add_part(" " * 7, self.subtitle_color)
         second_line.add_part(sender, self.sender_color(sender))
         second_line.add_part(
-            truncate_to_len(last_msg, width - string_len_dwc(sender) - 10),
+            truncate_to_len(
+                last_msg or "", width - string_len_dwc(sender) - 10
+            ),
             self.subtitle_color,
         )
 

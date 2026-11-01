@@ -40,3 +40,4 @@ line-length = 80
 line_length = 80
 multi_line_output = 3
 include_trailing_comma = true
+extra_standard_library = ["_curses"]

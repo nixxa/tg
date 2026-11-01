@@ -21,7 +21,7 @@ from datetime import datetime
 from functools import partial, wraps
 from queue import Queue
 from tempfile import NamedTemporaryFile
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, cast
 
 from tg import config
 from tg.client import Client
@@ -55,7 +55,7 @@ msg_handler: Dict[str, HandlerType] = {}
 layout_maps: Set[str] = set()
 
 
-def map_key_to_layout(key: str, lang_map: Dict[str, str]):
+def map_key_to_layout(key: str, lang_map: Dict[str, str]) -> str:
     mapped_key = ""
     for char in key:
         if char in lang_map:
@@ -85,10 +85,13 @@ def bind(
             assert (
                 key not in binding
             ), f"Key {key} already binded to {binding[key]}"
-            binding[key] = fun if repeat_factor else _no_repeat_factor  # type: ignore
+            handler = cast(
+                HandlerType, fun if repeat_factor else _no_repeat_factor
+            )
+            binding[key] = handler
 
             mapped_key = map_key_to_layout(key, config.LAYOUT_MAPPING)
-            binding[mapped_key] = fun if repeat_factor else _no_repeat_factor
+            binding[mapped_key] = handler
             layout_maps.add(mapped_key)
 
         return wrapper
@@ -341,8 +344,8 @@ class Controller:
             f.write(insert_replied_msg(msg))
             f.seek(0)
             s.call(config.LONG_MSG_CMD.format(file_path=shlex.quote(f.name)))
-            with open(f.name, encoding="utf-8") as f:
-                if replied_msg := strip_replied_msg(f.read().strip()):
+            with open(f.name, encoding="utf-8") as text_file:
+                if replied_msg := strip_replied_msg(text_file.read().strip()):
                     self.model.view_all_msgs()
                     self.tg.reply_message(chat_id, reply_to_msg, replied_msg)
                     self.present_info("Message sent")
@@ -377,8 +380,8 @@ class Controller:
         ):
             self.tg.send_chat_action(chat_id, ChatAction.chatActionTyping)
             s.call(config.LONG_MSG_CMD.format(file_path=shlex.quote(f.name)))
-            with open(f.name, encoding="utf-8") as f:
-                if msg := f.read().strip():
+            with open(f.name, encoding="utf-8") as text_file:
+                if msg := text_file.read().strip():
                     self.model.send_message(text=msg)
                     self.present_info("Message sent")
                 else:
@@ -406,8 +409,8 @@ class Controller:
         try:
             with NamedTemporaryFile("w") as f, suspend(self.view) as s:
                 s.call(config.FILE_PICKER_CMD.format(file_path=f.name))
-                with open(f.name, encoding="utf-8") as f:
-                    file_path = f.read().strip()
+                with open(f.name, encoding="utf-8") as text_file:
+                    file_path = text_file.read().strip()
         except FileNotFoundError:
             pass
         if not file_path or not os.path.isfile(file_path):
@@ -536,15 +539,15 @@ class Controller:
                     msg.text_content,
                 )
             return
-        if msg.caption != "":
+        if caption := msg.caption:
             with suspend(self.view) as s:
                 s.run_with_input(
                     config.VIEW_TEXT_CMD,
-                    msg.caption,
+                    caption,
                 )
             return
 
-    def _open_msg(self, msg: MsgProxy, cmd: str = None) -> None:
+    def _open_msg(self, msg: MsgProxy, cmd: Optional[str] = None) -> None:
         path = msg.local_path
         if not path:
             self.present_info("File should be downloaded first")
@@ -599,8 +602,8 @@ class Controller:
             f.write(msg.text_content)
             f.flush()
             s.call(f"{config.EDITOR} {f.name}")
-            with open(f.name, encoding="utf-8") as f:
-                if text := f.read().strip():
+            with open(f.name, encoding="utf-8") as text_file:
+                if text := text_file.read().strip():
                     self.model.edit_message(text=text)
                     self.present_info("Message edited")
 

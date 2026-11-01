@@ -978,7 +978,7 @@ class Client:
             return CallResult(update={})
         return self._call(coro)
 
-    def _log_task_error(self, task: "Future[Any]") -> None:
+    def _log_task_error(self, task: "asyncio.Task[Dict[str, Any]]") -> None:
         try:
             task.result()
         except Exception:

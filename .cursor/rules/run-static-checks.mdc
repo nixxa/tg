@@ -1,0 +1,19 @@
+---
+description: Run .github/check.sh static analysis before finishing a coding task
+alwaysApply: true
+---
+
+# Finish coding tasks with static checks
+
+Before declaring a coding task complete, run `.github/check.sh` from the repo root and fix every failure it reports.
+
+The script checks formatting (`black --check`), types (`mypy` on `tg`), import order (`isort -c tg/*.py`), and unused imports (`flake8 --select=F401`).
+
+```bash
+# From the repository root
+.github/check.sh
+```
+
+- A clean run (exit code 0) is required before the task is done.
+- On failure, fix the reported issues and run the script again. Do not finish while it still fails.
+- Skip the script only when the task did not change code (questions, reviews, docs-only discussion).

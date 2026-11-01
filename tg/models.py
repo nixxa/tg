@@ -53,7 +53,10 @@ class Model:
         if current_msg_indx is None:
             # A large unread count would otherwise request that many
             # messages before the first paint.
-            unread_count = min(int(current_chat.get("unread_count") or 0), 30)
+            unread = (
+                0 if current_chat is None else current_chat.get("unread_count")
+            )
+            unread_count = min(int(unread or 0), 30)
             self.msgs.current_msgs[current_chat_id] = unread_count
             current_msg_indx = unread_count
         return current_msg_indx
@@ -87,6 +90,8 @@ class Model:
         if chat_id is None:
             return {}
         current_msg = self.msgs.current_msgs[chat_id]
+        if current_msg is None:
+            return {}
         log.info("current-msg: %s", current_msg)
         msg_id = self.msgs.msg_ids[chat_id][current_msg]
         return self.msgs.msgs[chat_id][msg_id]
@@ -238,6 +243,8 @@ class Model:
                     return False
         else:
             selected_msg = self.msgs.current_msgs[chat_id]
+            if selected_msg is None:
+                return False
             msg_id = self.msgs.msg_ids[chat_id][selected_msg]
             msg = self.msgs.msgs[chat_id][msg_id]
             if not self.can_be_deleted(chat_id, msg):
@@ -490,7 +497,7 @@ class ChatModel:
             reverse=True,
         )
 
-    def update_chat(self, chat_id: int, **updates: Dict[str, Any]) -> bool:
+    def update_chat(self, chat_id: int, **updates: Any) -> bool:
         for i, chat in enumerate(self.chats):
             if chat["id"] != chat_id:
                 continue
@@ -524,7 +531,7 @@ class MsgModel:
     def __init__(self, tg: Client) -> None:
         self.tg = tg
         self.msgs: Dict[int, Dict[int, Dict]] = defaultdict(dict)
-        self.current_msgs: Dict[int, int] = defaultdict(lambda: None)
+        self.current_msgs: Dict[int, Optional[int]] = defaultdict(lambda: None)
         self.not_found: Set[int] = set()
         self.msg_ids: Dict[int, List[int]] = defaultdict(list)
 
@@ -536,7 +543,7 @@ class MsgModel:
 
     def next_msg(self, chat_id: int, step: int = 1) -> bool:
         current_msg = self.current_msgs[chat_id]
-        if current_msg == 0:
+        if current_msg is None or current_msg == 0:
             return False
         self.current_msgs[chat_id] = max(0, current_msg - step)
         return True
@@ -548,7 +555,10 @@ class MsgModel:
         return True
 
     def prev_msg(self, chat_id: int, step: int = 1) -> bool:
-        new_idx = self.current_msgs[chat_id] + step
+        current_msg = self.current_msgs[chat_id]
+        if current_msg is None:
+            current_msg = 0
+        new_idx = current_msg + step
         if new_idx < len(self.msg_ids[chat_id]):
             self.current_msgs[chat_id] = new_idx
             return True

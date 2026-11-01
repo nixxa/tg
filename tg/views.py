@@ -2,7 +2,7 @@ import curses
 import logging
 from _curses import window
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, Type, cast
 
 from tg import config
 from tg.colors import get_color, white
@@ -22,7 +22,7 @@ from tg.utils import enumerate2, num, string_len_dwc
 log = logging.getLogger(__name__)
 
 MAX_KEYBINDING_LENGTH = 5
-MULTICHAR_KEYBINDINGS = (
+MULTICHAR_KEYBINDINGS: Tuple[str, ...] = (
     "dd",
     "sd",
     "sp",
@@ -139,7 +139,7 @@ class AbstractView:
     def width(self) -> int:
         return self.w - self.first_column
 
-    def draw_lines(self, line_num, lines) -> int:
+    def draw_lines(self, line_num: int, lines: List[FormattedLine]) -> int:
         """
         Draws multiple lines on the window starting from a given line number.
         Args:
@@ -216,8 +216,8 @@ class ChatView(AbstractView):
         self,
         stdscr: window,
         model: Model,
-        header_fmt: Optional[HeaderFormatter] = HeaderFormatter,
-        chat_fmt: Optional[ChatFormatter] = ChatFormatter,
+        header_fmt: Type[HeaderFormatter] = HeaderFormatter,
+        chat_fmt: Type[ChatFormatter] = ChatFormatter,
     ) -> None:
         super().__init__(Win(stdscr.subwin(0, 0, 0, 0)))
         self.stdscr = stdscr
@@ -297,9 +297,14 @@ class MsgView(AbstractView):
         self.win.resize(self.h, self.w)
         self.win.mvwin(0, self.x)
 
-    def _create_msg_formatter(self, msg: Dict[str, Any], is_selected: bool):
+    def _create_msg_formatter(
+        self, msg: Dict[str, Any], is_selected: bool
+    ) -> MsgFormatter:
         chat = self.model.chats.chat_by_index(self.model.current_chat)
-        if chat["type"]["@type"] in ("chatTypePrivate", "chatTypeSecret"):
+        if chat is not None and chat["type"]["@type"] in (
+            "chatTypePrivate",
+            "chatTypeSecret",
+        ):
             return PrivateMsgFormatter(MsgProxy(msg), self.model, is_selected)
         return MsgFormatter(MsgProxy(msg), self.model, is_selected)
 
@@ -334,7 +339,7 @@ class MsgView(AbstractView):
                         collected_items.pop(0)
                     lines_available += needed_lines
                 else:
-                    selected_lines: List[FormattedLine] = []
+                    selected_lines = []
                     if config.LATEST_MSG_ON_TOP:
                         # Select only lines that fit and cut the tail
                         selected_lines = msg_lines[: abs(lines_available)]
@@ -491,7 +496,11 @@ class MsgView(AbstractView):
 
         try:
             current_msg_idx = self.model.get_current_chat_msg_idx()
-            msgs_to_draw = self._collect_msgs_to_draw(current_msg_idx, msgs)
+            msgs_to_draw = (
+                []
+                if current_msg_idx is None
+                else self._collect_msgs_to_draw(current_msg_idx, msgs)
+            )
 
             for lines in msgs_to_draw:
                 line_num = self.draw_lines(line_num, lines)

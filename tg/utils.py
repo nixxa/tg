@@ -21,7 +21,7 @@ from functools import lru_cache
 from logging.handlers import RotatingFileHandler
 from subprocess import CompletedProcess
 from types import TracebackType
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, Iterable, Iterator, Optional, Tuple, Type
 
 from tg import config
 
@@ -55,7 +55,7 @@ def setup_log() -> None:
             maxBytes=parse_size("32MB"),
             backupCount=1,
         )
-        handler.setLevel(level)  # type: ignore
+        handler.setLevel(level)
         handlers.append(handler)
 
     logging.basicConfig(
@@ -82,7 +82,7 @@ def get_mailcap() -> Dict:
         return {}
     if config.MAILCAP_FILE:
         with open(config.MAILCAP_FILE) as f:
-            return mailcap.readmailcapfile(f)  # type: ignore
+            return mailcap.readmailcapfile(f)
     return mailcap.getcaps()
 
 
@@ -263,7 +263,7 @@ class suspend:
         if proc.returncode:
             input(f"Command <{cmd}> failed: press <enter> to continue")
 
-    def open_file(self, file_path: str, cmd: str = None) -> None:
+    def open_file(self, file_path: str, cmd: Optional[str] = None) -> None:
         if cmd:
             cmd = cmd % shlex.quote(file_path)
         else:
@@ -353,7 +353,9 @@ def cleanup_cache() -> None:
     subprocess.Popen(cmd, shell=True)
 
 
-def enumerate2(xs, start=0, step=1):
+def enumerate2(
+    xs: Iterable[Any], start: int = 0, step: int = 1
+) -> Iterator[Tuple[int, Any]]:
     for x in xs:
         yield (start, x)
         start += step

@@ -180,11 +180,15 @@ class MsgProxy:
 
     @property
     def poll_question(self) -> str:
-        return self.msg["content"]["poll"]["question"] if self.is_poll else None
+        if not self.is_poll:
+            return ""
+        return self.msg["content"]["poll"]["question"]
 
     @property
     def poll_options(self) -> List[Dict]:
-        return self.msg["content"]["poll"]["options"] if self.is_poll else None
+        if not self.is_poll:
+            return []
+        return self.msg["content"]["poll"]["options"]
 
     @property
     def is_closed_poll(self) -> Optional[bool]:
@@ -211,7 +215,7 @@ class MsgProxy:
     @property
     def links_from_entities(self) -> str:
         if not "text" in self.msg["content"]:
-            return None
+            return ""
         if entities := self.msg["content"]["text"].get("entities", None):
             known_entities = set()
             for entity in entities:
@@ -227,7 +231,7 @@ class MsgProxy:
                 for url in known_entities:
                     result += f"{url}\n"
                 return result
-        return None
+        return ""
 
     @property
     def is_downloaded(self) -> bool:
@@ -282,7 +286,9 @@ class MsgProxy:
 
     @property
     def reply_markup_rows(self) -> List[List[Dict[str, Any]]]:
-        return self.reply_markup.get("rows", []) if self.reply_markup else None
+        if not self.reply_markup:
+            return []
+        return self.reply_markup.get("rows") or []
 
     @property
     def chat_id(self) -> int:
