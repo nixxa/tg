@@ -14,7 +14,7 @@ python = "^3.14"
 telethon = "^1.45.0"
 telethon-secret-chat = "^0.2.4"
 
-[tool.poetry.dev-dependencies]
+[poetry.group.dev.dependencies]
 black = "^26.10"
 flake8 = "^7.5"
 isort = "^9.0"
