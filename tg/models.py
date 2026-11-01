@@ -142,6 +142,28 @@ class Model:
         if chat_id := self.chats.id_by_index(self.current_chat):
             self.tg.view_messages(chat_id, [msg.msg_id])
 
+    def note_rendered_msgs(self, msg_ids: List[int]) -> bool:
+        """Treat shown messages as read so the "new" badge does not stick.
+
+        Returns True when the read cursor moved and the pane should be
+        laid out again.
+        """
+        if not msg_ids:
+            return False
+        chat = self.chats.chat_by_index(self.current_chat)
+        if not chat:
+            return False
+        max_id = max(msg_ids)
+        last_read = int(chat.get("last_read_inbox_message_id") or 0)
+        if max_id <= last_read:
+            return False
+        chat["last_read_inbox_message_id"] = max_id
+        last_message = chat.get("last_message") or {}
+        if int(last_message.get("id") or 0) <= max_id:
+            chat["unread_count"] = 0
+        self.tg.view_messages(chat["id"], [max_id])
+        return True
+
     def view_all_msgs(self) -> None:
         chat = self.chats.chats[self.current_chat]
         last_message = chat.get("last_message")

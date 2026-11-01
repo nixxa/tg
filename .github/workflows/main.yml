@@ -27,7 +27,7 @@ jobs:
     - name: Install tools
       run: |
         pip install poetry
-        oetry config virtualenvs.create false
+        poetry config virtualenvs.create false
         poetry install --no-interaction --no-ansi
     
     - name: Run checks

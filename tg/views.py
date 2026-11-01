@@ -308,8 +308,9 @@ class MsgView(AbstractView):
         self,
         current_msg_idx: int,
         msgs: List[Tuple[int, Dict[str, Any]]],
+        _reread: bool = True,
     ) -> List[List[FormattedLine]]:
-        collected_items: List[Tuple[Any, List[FormattedLine]]] = []
+        collected_items: List[Tuple[Any, List[FormattedLine], int]] = []
         budget = self.h - self.header_formatter.height
         lines_available = budget
         for msg_idx, msg_item in msgs:
@@ -325,7 +326,9 @@ class MsgView(AbstractView):
                     selected_lines = msg_lines[
                         : needed_lines + lines_available
                     ]
-                    collected_items.append((day, selected_lines))
+                    collected_items.append(
+                        (day, selected_lines, msg_item["id"])
+                    )
                     break
                 # If currently selected message is not visible on the screen,
                 # then remove first collected item and increase line_num
@@ -346,11 +349,19 @@ class MsgView(AbstractView):
                         if selected_lines_count > 0:
                             selected_lines = msg_lines[-selected_lines_count:]
                     if len(selected_lines) > 0:
-                        collected_items.append((day, selected_lines))
+                        collected_items.append(
+                            (day, selected_lines, msg_item["id"])
+                        )
                     break
             else:
-                collected_items.append((day, msg_lines))
-        return self._with_date_separators(collected_items, budget)
+                collected_items.append((day, msg_lines, msg_item["id"]))
+        shown_ids = [msg_id for _day, _lines, msg_id in collected_items]
+        if _reread and self.model.note_rendered_msgs(shown_ids):
+            return self._collect_msgs_to_draw(
+                current_msg_idx, msgs, _reread=False
+            )
+        visible = [(day, lines) for day, lines, _msg_id in collected_items]
+        return self._with_date_separators(visible, budget)
 
     def _with_date_separators(
         self,

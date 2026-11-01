@@ -85,6 +85,7 @@ def update_new_message(controller: Controller, update: Dict[str, Any]) -> None:
     """
     msg = MsgProxy(update["message"])
     controller.model.msgs.add_message(msg.chat_id, msg.msg)
+    _track_unread(controller, msg)
     current_chat_id = controller.model.current_chat_id
     if current_chat_id == msg.chat_id:
         controller.render_msgs()
@@ -92,6 +93,38 @@ def update_new_message(controller: Controller, update: Dict[str, Any]) -> None:
         controller.download(msg.file_id, msg.chat_id, msg.msg_id)
 
     controller.notify_for_message(msg.chat_id, msg)
+
+
+def _track_unread(controller: Controller, msg: MsgProxy) -> None:
+    """Raise the badge, or clear it when this chat is open at the bottom."""
+    if msg.is_outgoing:
+        return
+    chat_id = msg.chat_id
+    chats = controller.model.chats
+    chat = next(
+        (item for item in chats.chats if item["id"] == chat_id),
+        chats.inactive_chats.get(chat_id),
+    )
+    if not chat:
+        return
+    at_bottom = (
+        controller.model.current_chat_id == chat_id
+        and controller.model.msgs.current_msgs[chat_id] == 0
+    )
+    if at_bottom:
+        last_read = max(
+            int(chat.get("last_read_inbox_message_id") or 0), msg.msg_id
+        )
+        controller.tg.view_messages(chat_id, [msg.msg_id])
+        chats.update_chat(
+            chat_id,
+            unread_count=0,
+            last_read_inbox_message_id=last_read,
+        )
+        return
+    chats.update_chat(
+        chat_id, unread_count=int(chat.get("unread_count") or 0) + 1
+    )
 
 
 # outdated

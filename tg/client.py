@@ -365,6 +365,7 @@ class Client:
         client.add_event_handler(self._on_user_update, events.UserUpdate())
         client.add_event_handler(self._on_read, events.MessageRead())
         client.add_event_handler(self._on_read, events.MessageRead(inbox=True))
+        client.add_event_handler(self._on_inbox_count)
 
     async def _on_new_message(self, event: Any) -> None:
         msg = self._message_to_dict(event.message)
@@ -455,13 +456,20 @@ class Client:
                     "last_read_outbox_message_id": event.max_id,
                 },
             )
+
+    async def _on_inbox_count(self, update: Any) -> None:
+        if isinstance(update, types.UpdateReadHistoryInbox):
+            chat_id = utils.get_peer_id(update.peer)
+        elif isinstance(update, types.UpdateReadChannelInbox):
+            chat_id = utils.get_peer_id(types.PeerChannel(update.channel_id))
+        else:
             return
         self._emit(
             "updateChatReadInbox",
             {
-                "chat_id": event.chat_id,
-                "last_read_inbox_message_id": event.max_id,
-                "unread_count": 0,
+                "chat_id": chat_id,
+                "last_read_inbox_message_id": update.max_id,
+                "unread_count": int(update.still_unread_count or 0),
             },
         )
 
@@ -971,7 +979,18 @@ class Client:
     ) -> CallResult:
         if not message_ids:
             return CallResult(update={})
-        return self._call(self._view_messages(chat_id, max(message_ids)))
+        coro = self._view_messages(chat_id, max(message_ids))
+        if threading.current_thread() is self._thread:
+            task = self.loop.create_task(coro)
+            task.add_done_callback(self._log_task_error)
+            return CallResult(update={})
+        return self._call(coro)
+
+    def _log_task_error(self, task: "Future[Any]") -> None:
+        try:
+            task.result()
+        except Exception:
+            log.exception("Telegram request failed")
 
     async def _view_messages(
         self, chat_id: int, max_id: int
